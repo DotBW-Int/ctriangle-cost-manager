@@ -27,12 +27,13 @@ class AppTheme {
         seedColor: primaryBlue,
         brightness: Brightness.light,
       ),
-      scaffoldBackgroundColor: Colors.grey[50],
+      scaffoldBackgroundColor: Colors.white, // Consistent white background
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.white, // Same as scaffold
         foregroundColor: Colors.black87,
         elevation: 0,
         centerTitle: true,
+        surfaceTintColor: Colors.white, // Prevent color tinting
       ),
       cardTheme: const CardTheme(
         color: Colors.white,
@@ -57,22 +58,26 @@ class AppTheme {
 
   // Dark Theme
   static ThemeData get darkTheme {
+    const Color darkGrayBackground = Color(0xFF2D2D2D); // Dark gray background
+    
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryBlue,
         brightness: Brightness.dark,
+        surface: darkGrayBackground,
       ),
-      scaffoldBackgroundColor: const Color(0xFF0F172A),
+      scaffoldBackgroundColor: darkGrayBackground, // Dark gray background
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF1E293B),
+        backgroundColor: darkGrayBackground, // Same as scaffold
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        surfaceTintColor: darkGrayBackground, // Prevent color tinting
       ),
       cardTheme: const CardTheme(
-        color: Color(0xFF1E293B),
+        color: Color(0xFF3D3D3D), // Slightly lighter gray for cards
         elevation: 2,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),

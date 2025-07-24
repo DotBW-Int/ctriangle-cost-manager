@@ -175,72 +175,108 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildAppBar() {
-    return SliverAppBar(
-      expandedHeight: 120,
-      floating: false,
-      pinned: true,
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      flexibleSpace: FlexibleSpaceBar(
-        background: Container(
-          decoration: const BoxDecoration(
-            gradient: AppTheme.primaryGradient,
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const CTriangleLogo(fontSize: 32, showFullName: false),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Good ${_getGreeting()}!',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 16,
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        final isDarkMode = themeProvider.isDarkMode;
+        // Use theme background colors for consistency
+        final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+        final textColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87;
+        final iconColor = isDarkMode ? Colors.white70 : Colors.grey[600];
+        
+        return SliverAppBar(
+          expandedHeight: 100,
+          floating: false,
+          pinned: true,
+          backgroundColor: backgroundColor,
+          surfaceTintColor: backgroundColor,
+          shadowColor: Colors.transparent, // Remove shadow
+          elevation: 0, // Remove elevation
+          collapsedHeight: 70,
+          flexibleSpace: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              // Calculate the shrink offset (0.0 = fully expanded, 1.0 = fully collapsed)
+              final double shrinkOffset = 
+                  (constraints.maxHeight - kToolbarHeight - MediaQuery.of(context).padding.top) / 
+                  (100 - kToolbarHeight - MediaQuery.of(context).padding.top);
+              
+              final bool isCollapsed = shrinkOffset <= 0.0;
+              
+              return Container(
+                decoration: BoxDecoration(
+                  color: backgroundColor, // Use theme background
+                ),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Left side - Logo and greeting
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // Logo - scales down when collapsed
+                              CTriangleLogo(
+                                fontSize: isCollapsed ? 20 : 28,
+                                showFullName: !isCollapsed,
+                              ),
+                              // Greeting - fades out when collapsed
+                              if (!isCollapsed) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Good ${_getGreeting()}!',
+                                  style: TextStyle(
+                                    color: textColor.withOpacity(0.7),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      // Clear Data Button
-                      IconButton(
-                        onPressed: _showClearDataDialog,
-                        icon: const Icon(
-                          Icons.delete_sweep,
-                          color: Colors.white70,
-                          size: 24,
-                        ),
-                        tooltip: 'Clear All Data',
-                      ),
-                      // Theme Toggle Button
-                      Consumer<ThemeProvider>(
-                        builder: (context, themeProvider, child) {
-                          return IconButton(
-                            onPressed: () => themeProvider.toggleTheme(),
-                            icon: Icon(
-                              themeProvider.isDarkMode 
-                                  ? Icons.light_mode 
-                                  : Icons.dark_mode,
-                              color: Colors.white70,
+                        // Right side - Action buttons
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Clear Data Button
+                            IconButton(
+                              onPressed: _showClearDataDialog,
+                              icon: Icon(
+                                Icons.delete_sweep,
+                                color: iconColor,
+                                size: isCollapsed ? 20 : 24,
+                              ),
+                              tooltip: 'Clear All Data',
                             ),
-                          );
-                        },
-                      ),
-                    ],
+                            // Theme Toggle Button with proper colors
+                            IconButton(
+                              onPressed: () => themeProvider.toggleTheme(),
+                              icon: Icon(
+                                themeProvider.isDarkMode 
+                                    ? Icons.light_mode 
+                                    : Icons.dark_mode,
+                                color: themeProvider.isDarkMode 
+                                    ? Colors.amber // Sun icon in dark mode
+                                    : Colors.grey[700], // Moon icon in light mode
+                                size: isCollapsed ? 20 : 24,
+                              ),
+                              tooltip: 'Toggle Theme',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

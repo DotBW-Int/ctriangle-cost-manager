@@ -214,48 +214,58 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet> {
   Widget build(BuildContext context) {
     _initializeCurrency(); // Update currency format when rebuilding
     
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildTypeSelector(),
-                    const SizedBox(height: 20),
-                    _buildAmountField(),
-                    const SizedBox(height: 20),
-                    _buildCategorySelector(),
-                    const SizedBox(height: 20),
-                    _buildDescriptionField(),
-                    const SizedBox(height: 20),
-                    _buildDatePicker(),
-                    const SizedBox(height: 20),
-                    _buildReceiptSection(),
-                    if (_selectedType == 'expense') ...[
+    return GestureDetector(
+      // Dismiss keyboard when tapping outside
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.9, // Increased height
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 120, // Add keyboard padding
+                ),
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTypeSelector(),
                       const SizedBox(height: 20),
-                      _buildVirtualBankSelector(),
+                      _buildAmountField(),
+                      const SizedBox(height: 20),
+                      _buildCategorySelector(),
+                      const SizedBox(height: 20),
+                      _buildDescriptionField(),
+                      const SizedBox(height: 20),
+                      _buildDatePicker(),
+                      const SizedBox(height: 20),
+                      _buildReceiptSection(),
+                      if (_selectedType == 'expense') ...[
+                        const SizedBox(height: 20),
+                        _buildVirtualBankSelector(),
+                      ],
+                      const SizedBox(height: 20),
+                      _buildRecurringSection(),
+                      const SizedBox(height: 30),
+                      _buildActionButtons(),
                     ],
-                    const SizedBox(height: 20),
-                    _buildRecurringSection(),
-                    const SizedBox(height: 30),
-                    _buildActionButtons(),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
