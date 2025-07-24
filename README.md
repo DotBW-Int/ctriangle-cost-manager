@@ -53,7 +53,7 @@ A comprehensive **offline-first** financial management app built with Flutter, f
 
 ```bash
 # Clone the repository
-git clone https://github.com/Dotbw/ctriangle-cost-manager.git
+git clone https://github.com/DOTBW-Int/ctriangle-cost-manager.git
 cd ctriangle-cost-manager
 
 # Install dependencies
