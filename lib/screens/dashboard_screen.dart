@@ -8,6 +8,11 @@ import '../core/widgets/brand_logo.dart';
 import '../core/theme/app_theme.dart';
 import '../core/models/models.dart';
 import 'add_transaction_screen.dart';
+import 'settings_screen.dart';
+import 'transactions_screen.dart';
+import 'emi_screen.dart';
+import 'virtual_banks_screen.dart';
+import '../core/widgets/create_virtual_bank_dialog.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -16,13 +21,33 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> 
+    with TickerProviderStateMixin { // Add animation mixin
   late NumberFormat _currencyFormat;
   late String _currencySymbol;
+  late AnimationController _progressAnimationController;
+  late Animation<double> _progressAnimation;
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize progress line animation
+    _progressAnimationController = AnimationController(
+      duration: const Duration(seconds: 3),
+      vsync: this,
+    );
+    
+    _progressAnimation = Tween<double>(
+      begin: -1.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _progressAnimationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    // Start continuous animation
+    _progressAnimationController.repeat();
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Initialize currency formatting
@@ -31,6 +56,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context.read<FinanceProvider>().initializeData();
       context.read<FinanceProvider>().processRecurringTransactions();
     });
+  }
+
+  @override
+  void dispose() {
+    _progressAnimationController.dispose();
+    super.dispose();
   }
 
   @override
@@ -139,12 +170,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           slivers: [
             _buildAppBar(),
             SliverPadding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), // Restored bottom padding for FAB
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   _buildBalanceCard(),
-                  const SizedBox(height: 16),
-                  _buildVirtualBanksSection(),
                   const SizedBox(height: 16),
                   _buildQuickActionsSection(),
                   const SizedBox(height: 16),
@@ -180,30 +209,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final isDarkMode = themeProvider.isDarkMode;
         // Use theme background colors for consistency
         final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
-        final textColor = Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87;
         final iconColor = isDarkMode ? Colors.white70 : Colors.grey[600];
         
         return SliverAppBar(
-          expandedHeight: 100,
+          expandedHeight: 70, // Reduced from 100
           floating: false,
           pinned: true,
           backgroundColor: backgroundColor,
           surfaceTintColor: backgroundColor,
-          shadowColor: Colors.transparent, // Remove shadow
-          elevation: 0, // Remove elevation
-          collapsedHeight: 70,
+          shadowColor: Colors.transparent,
+          elevation: 0,
+          collapsedHeight: 60, // Reduced from 70
           flexibleSpace: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
-              // Calculate the shrink offset (0.0 = fully expanded, 1.0 = fully collapsed)
               final double shrinkOffset = 
                   (constraints.maxHeight - kToolbarHeight - MediaQuery.of(context).padding.top) / 
-                  (100 - kToolbarHeight - MediaQuery.of(context).padding.top);
+                  (70 - kToolbarHeight - MediaQuery.of(context).padding.top);
               
               final bool isCollapsed = shrinkOffset <= 0.0;
               
               return Container(
                 decoration: BoxDecoration(
-                  color: backgroundColor, // Use theme background
+                  color: backgroundColor,
                 ),
                 child: SafeArea(
                   child: Padding(
@@ -212,29 +239,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Left side - Logo and greeting
+                        // Left side - "CT" logo with progress line below
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              // Logo - scales down when collapsed
-                              CTriangleLogo(
-                                fontSize: isCollapsed ? 20 : 28,
-                                showFullName: !isCollapsed,
-                              ),
-                              // Greeting - fades out when collapsed
-                              if (!isCollapsed) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Good ${_getGreeting()}!',
-                                  style: TextStyle(
-                                    color: textColor.withOpacity(0.7),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                              // "CT" logo
+                              RichText(
+                                text: TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: 'C',
+                                      style: TextStyle(
+                                        fontSize: isCollapsed ? 22 : 26,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primaryBlue, // Always blue
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: 'T',
+                                      style: TextStyle(
+                                        fontSize: isCollapsed ? 22 : 26,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDarkMode ? Colors.white : Colors.black87,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
+                              // Progress line below the logo
+                              const SizedBox(height: 4),
+                              SizedBox(
+                                width: 35, // Match CT logo width exactly
+                                child: _buildAnimatedProgressLine(),
+                              ),
                             ],
                           ),
                         ),
@@ -242,17 +281,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Clear Data Button
+                            // Profile/Settings Button
                             IconButton(
-                              onPressed: _showClearDataDialog,
+                              onPressed: () => _navigateToSettings(),
                               icon: Icon(
-                                Icons.delete_sweep,
+                                Icons.person_outline,
                                 color: iconColor,
-                                size: isCollapsed ? 20 : 24,
+                                size: isCollapsed ? 18 : 20,
                               ),
-                              tooltip: 'Clear All Data',
+                              tooltip: 'Profile & Settings',
                             ),
-                            // Theme Toggle Button with proper colors
+                            // Theme Toggle Button
                             IconButton(
                               onPressed: () => themeProvider.toggleTheme(),
                               icon: Icon(
@@ -260,9 +299,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ? Icons.light_mode 
                                     : Icons.dark_mode,
                                 color: themeProvider.isDarkMode 
-                                    ? Colors.amber // Sun icon in dark mode
-                                    : Colors.grey[700], // Moon icon in light mode
-                                size: isCollapsed ? 20 : 24,
+                                    ? Colors.amber
+                                    : Colors.grey[700],
+                                size: isCollapsed ? 18 : 20,
                               ),
                               tooltip: 'Toggle Theme',
                             ),
@@ -277,6 +316,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildAnimatedProgressLine() {
+    return Container(
+      height: 3,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(2),
+        child: AnimatedBuilder(
+          animation: _progressAnimation,
+          builder: (context, child) {
+            // Calculate progress line to match "CT" width (approximately 32-35px)
+            final containerWidth = 35.0; // Match CT logo width
+            final lineWidth = 20.0; // Smaller moving line
+            
+            // Position calculation for complete left-to-right flow
+            final position = (_progressAnimation.value + 1.0) / 2.0; // Convert -1,1 to 0,1
+            final leftPosition = (position * (containerWidth + lineWidth)) - lineWidth;
+            
+            return Container(
+              width: containerWidth,
+              height: 3,
+              child: Stack(
+                children: [
+                  // Animated progress line
+                  Positioned(
+                    left: leftPosition,
+                    child: Container(
+                      width: lineWidth,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            Colors.transparent,
+                            AppTheme.primaryBlue.withOpacity(0.3),
+                            AppTheme.primaryBlue,
+                            AppTheme.lightBlue,
+                            AppTheme.primaryBlue.withOpacity(0.3),
+                            Colors.transparent,
+                          ],
+                          stops: const [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                        ),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -368,6 +461,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildBalanceCard() {
     return Consumer<FinanceProvider>(
       builder: (context, financeProvider, child) {
+        // Fixed income calculation - include both 'income' and 'recurring' types with income categories
+        final totalIncome = financeProvider.transactions
+            .where((t) => t.type == 'income' || 
+                         (t.type == 'recurring' && _isIncomeCategory(t.category)))
+            .fold(0.0, (sum, t) => sum + t.amount);
+            
+        final totalExpenses = financeProvider.transactions
+            .where((t) => t.type == 'expense' || 
+                         (t.type == 'recurring' && !_isIncomeCategory(t.category)))
+            .fold(0.0, (sum, t) => sum + t.amount);
+        
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -417,9 +521,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Expanded(
                     child: _buildBalanceInfo(
                       'Income',
-                      financeProvider.transactions
-                          .where((t) => t.type == 'income')
-                          .fold(0.0, (sum, t) => sum + t.amount),
+                      totalIncome, // Use fixed calculation
                       Icons.trending_up,
                       Colors.green[300]!,
                     ),
@@ -428,9 +530,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Expanded(
                     child: _buildBalanceInfo(
                       'Expenses',
-                      financeProvider.transactions
-                          .where((t) => t.type == 'expense')
-                          .fold(0.0, (sum, t) => sum + t.amount),
+                      totalExpenses, // Use fixed calculation
                       Icons.trending_down,
                       Colors.red[300]!,
                     ),
@@ -444,199 +544,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildBalanceInfo(String title, double amount, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  _currencyFormat.format(amount),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  // Helper method to check if a category is income-related
+  bool _isIncomeCategory(String category) {
+    const incomeCategories = [
+      'Salary', 'Freelance', 'Business', 'Investments', 'Rental Income',
+      'Dividends', 'Interest', 'Bonus', 'Tax Refund', 'Gifts', 'Other Income'
+    ];
+    return incomeCategories.contains(category);
   }
 
-  Widget _buildVirtualBanksSection() {
-    return Consumer<FinanceProvider>(
-      builder: (context, financeProvider, child) {
-        if (financeProvider.virtualBanks.isEmpty) {
-          return _buildEmptyVirtualBanks();
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Virtual Banks',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => _showCreateVirtualBankDialog(),
-                  child: const Text('Add New'),
-                ),
-              ],
+  Widget _buildBalanceInfo(String title, double amount, IconData icon, Color color) {
+    return GestureDetector(
+      onTap: () {
+        // Navigate to transactions screen with filter
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => TransactionsScreen(
+              initialFilter: title.toLowerCase() == 'income' ? 'income' : 'expense',
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 160,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: financeProvider.virtualBanks.length,
-                itemBuilder: (context, index) {
-                  final bank = financeProvider.virtualBanks[index];
-                  return _buildVirtualBankCard(bank);
-                },
-              ),
-            ),
-          ],
+          ),
         );
       },
-    );
-  }
-
-  Widget _buildVirtualBankCard(VirtualBank bank) {
-    final color = Color(int.parse(bank.color.replaceFirst('#', '0xFF')));
-    
-    return Container(
-      width: 200,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            color,
-            color.withOpacity(0.8),
-          ],
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
         ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                bank.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Icon(
-                _getIconData(bank.icon),
-                color: Colors.white,
-                size: 24,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _currencyFormat.format(bank.balance),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Goal: ${_currencyFormat.format(bank.targetAmount)}',
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: bank.progressPercentage,
-            backgroundColor: Colors.white.withOpacity(0.3),
-            valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${(bank.progressPercentage * 100).toStringAsFixed(0)}% Complete',
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyVirtualBanks() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
+        child: Row(
           children: [
-            Icon(
-              Icons.account_balance,
-              size: 48,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Create Virtual Banks',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    _currencyFormat.format(amount),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Save for specific goals like insurance, emergency fund, or vacation',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-            const SizedBox(height: 16),
-            GradientButton(
-              text: 'Create Your First Bank',
-              onPressed: () => _showCreateVirtualBankDialog(),
             ),
           ],
         ),
@@ -676,6 +635,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildQuickActionCard(
+                'Manage EMIs',
+                Icons.credit_card,
+                AppTheme.primaryBlue,
+                () => _navigateToEMIScreen(),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildQuickActionCard(
+                'Virtual Banks',
+                Icons.account_balance,
+                Colors.purple,
+                () => _navigateToVirtualBanksScreen(),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -704,6 +685,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              const SizedBox(height: 4),
+              // Only show counts for status/navigation actions (EMIs and Virtual Banks)
+              if (title == 'Manage EMIs')
+                Consumer<FinanceProvider>(
+                  builder: (context, financeProvider, child) {
+                    final emiCount = financeProvider.emis.length;
+                    return Text(
+                      '$emiCount EMIs',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    );
+                  },
+                )
+              else if (title == 'Virtual Banks')
+                Consumer<FinanceProvider>(
+                  builder: (context, financeProvider, child) {
+                    final bankCount = financeProvider.virtualBanks.length;
+                    return Text(
+                      '$bankCount Banks',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    );
+                  },
+                ),
             ],
           ),
         ),
@@ -731,9 +740,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (recentTransactions.isNotEmpty)
                   TextButton(
                     onPressed: () {
-                      // TODO: Navigate to transactions screen
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('All transactions screen coming soon!')),
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const TransactionsScreen(),
+                        ),
                       );
                     },
                     child: const Text('View All'),
@@ -755,10 +765,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(32),
-        child: Center( // Added Center widget for proper alignment
+        child: Center(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center, // Center vertically
-            crossAxisAlignment: CrossAxisAlignment.center, // Center horizontally
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
@@ -778,24 +788,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
-                textAlign: TextAlign.center, // Center text alignment
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                'Start tracking your finances by adding your first transaction',
+                'Start tracking your finances by using the floating + button',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
-              const SizedBox(height: 16),
-              Center( // Center the button
-                child: GradientButton(
-                  text: 'Add Transaction',
-                  onPressed: () => _showAddTransactionBottomSheet(),
-                  width: 160,
-                ),
-              ),
+              // Removed the "Add Transaction" button since we have floating action button
             ],
           ),
         ),
@@ -817,7 +820,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             shape: BoxShape.circle,
           ),
           child: Icon(
-            isExpense ? Icons.arrow_downward : Icons.arrow_upward,
+            isExpense ? Icons.arrow_upward : Icons.arrow_downward,
             color: color,
             size: 20,
           ),
@@ -829,15 +832,131 @@ class _DashboardScreenState extends State<DashboardScreen> {
         subtitle: Text(
           '${transaction.category} • ${DateFormat('MMM dd').format(transaction.date)}',
         ),
-        trailing: Text(
-          '${isExpense ? '-' : '+'} ${_currencyFormat.format(transaction.amount)}',
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.bold,
-          ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${isExpense ? '-' : '+'} ${_currencyFormat.format(transaction.amount)}',
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Revert button
+            IconButton(
+              onPressed: () => _showRevertTransactionDialog(transaction),
+              icon: Icon(
+                Icons.undo,
+                color: Colors.grey[600],
+                size: 20,
+              ),
+              tooltip: 'Revert Transaction',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(
+                minWidth: 32,
+                minHeight: 32,
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  void _showRevertTransactionDialog(Transaction transaction) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Revert Transaction'),
+          content: Text(
+            'Are you sure you want to revert "${transaction.description}"?\n\n'
+            'This will create a new ${transaction.type == 'expense' ? 'income' : 'expense'} '
+            'transaction of ₹${_currencyFormat.format(transaction.amount)} to cancel out this transaction.',
+            style: const TextStyle(height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _revertTransaction(transaction);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Revert Transaction'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _revertTransaction(Transaction transaction) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Text('Reverting transaction...'),
+              ],
+            ),
+          );
+        },
+      );
+
+      // Create reversed transaction with correct logic and all required fields
+      final isOriginalExpense = transaction.type == 'expense';
+      final reversedTransaction = Transaction(
+        id: null, // New transaction, so no ID
+        description: 'Revert: ${transaction.description}',
+        amount: transaction.amount, // Keep same amount
+        date: DateTime.now(),
+        category: transaction.category,
+        type: isOriginalExpense ? 'income' : 'expense', // Opposite type
+        createdAt: DateTime.now(), // Add required createdAt field
+        updatedAt: DateTime.now(), // Add required updatedAt field
+      );
+      
+      await context.read<FinanceProvider>().addTransaction(reversedTransaction);
+
+      // Close loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transaction reverted successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if open
+      if (mounted) {
+        Navigator.of(context).pop();
+        
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error reverting transaction: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildExpenseChart() {
@@ -853,6 +972,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               return const SizedBox.shrink();
             }
 
+            final data = snapshot.data!;
+            final sortedEntries = data.entries.toList()
+              ..sort((a, b) => b.value.compareTo(a.value)); // Sort by amount descending
+            
             return Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -866,15 +989,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      height: 200,
-                      child: PieChart(
-                        PieChartData(
-                          sections: _buildPieChartSections(snapshot.data!),
-                          centerSpaceRadius: 60,
-                          sectionsSpace: 2,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Pie Chart
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 200,
+                            child: PieChart(
+                              PieChartData(
+                                sections: _buildPieChartSections(data),
+                                centerSpaceRadius: 60,
+                                sectionsSpace: 2,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 16),
+                        // Category Legend
+                        Expanded(
+                          flex: 1,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Top Categories',
+                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              ...sortedEntries.take(4).map((entry) => 
+                                _buildCategoryLegend(entry.key, entry.value, data)
+                              ),
+                              if (sortedEntries.length > 4)
+                                Text(
+                                  '+ ${sortedEntries.length - 4} more',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -915,6 +1074,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }).toList();
+  }
+
+  Widget _buildCategoryLegend(String category, double amount, Map<String, double> allData) {
+    final colors = [
+      AppTheme.primaryBlue,
+      AppTheme.lightBlue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.red,
+      Colors.teal,
+      Colors.amber,
+    ];
+    
+    final index = allData.keys.toList().indexOf(category);
+    final color = colors[index % colors.length];
+    final totalAmount = allData.values.fold(0.0, (a, b) => a + b);
+    final percentage = (amount / totalAmount * 100).toStringAsFixed(0);
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  category,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  '${_currencyFormat.format(amount)} ($percentage%)',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildFinancialInsights() {
@@ -1007,9 +1223,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showCreateVirtualBankDialog() {
-    // TODO: Implement create virtual bank dialog
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Create virtual bank feature coming soon!')),
+    showDialog(
+      context: context,
+      builder: (context) => const CreateVirtualBankDialog(),
+    );
+  }
+
+  void _navigateToSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const SettingsScreen(),
+      ),
+    );
+  }
+
+  void _navigateToEMIScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const EMIScreen(),
+      ),
+    );
+  }
+
+  void _navigateToVirtualBanksScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const VirtualBanksScreen(),
+      ),
     );
   }
 

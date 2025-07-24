@@ -14,40 +14,30 @@ class DatabaseHelper {
 
   static Database? _database;
 
+  static const String _databaseName = 'cost_manager.db';
+  static const int _databaseVersion = 2;
+
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
   }
 
-  Future<Database> _initDatabase() async {
+  static Future<Database> _initDatabase() async {
     try {
       // Initialize web database factory if on web
       if (kIsWeb) {
         databaseFactory = databaseFactoryFfiWeb;
       }
       
-      // Use a consistent database name
-      String dbName = 'cost_manager.db';
-      String path;
-      
-      if (kIsWeb) {
-        // For web, use just the database name - it will be stored in IndexedDB
-        path = dbName;
-      } else {
-        // For mobile platforms (iOS/Android), use the proper path
-        final documentsDirectory = await getApplicationDocumentsDirectory();
-        path = join(documentsDirectory.path, dbName);
-      }
-      
-      print('DatabaseHelper: Initializing database at: $path');
-      print('DatabaseHelper: Platform: ${kIsWeb ? 'Web' : 'Native'}');
-      
+      final dbPath = await getDatabasesPath();
+      final path = join(dbPath, _databaseName);
+
       return await openDatabase(
         path,
-        version: 1,
+        version: _databaseVersion,
         onCreate: _createTables,
-        onUpgrade: _onUpgrade,
+        onUpgrade: _onUpgrade, // Add migration support
         readOnly: false,
         singleInstance: true,
       );
@@ -57,7 +47,7 @@ class DatabaseHelper {
     }
   }
 
-  Future<void> _createTables(Database db, int version) async {
+  static Future<void> _createTables(Database db, int version) async {
     print('DatabaseHelper: Creating tables...');
     
     // Transactions table
@@ -87,9 +77,12 @@ class DatabaseHelper {
         name TEXT NOT NULL,
         balance REAL NOT NULL DEFAULT 0.0,
         target_amount REAL NOT NULL DEFAULT 0.0,
+        target_date INTEGER,
         color TEXT NOT NULL,
         icon TEXT NOT NULL,
         description TEXT,
+        type TEXT DEFAULT 'savings',
+        debit_source TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
@@ -111,12 +104,49 @@ class DatabaseHelper {
       )
     ''');
 
+    // EMIs table
+    await db.execute('''
+      CREATE TABLE emis (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        lender_name TEXT NOT NULL,
+        principal_amount REAL NOT NULL,
+        interest_rate REAL NOT NULL,
+        tenure_months INTEGER NOT NULL,
+        monthly_emi REAL NOT NULL,
+        total_amount REAL NOT NULL,
+        total_interest REAL NOT NULL,
+        paid_amount REAL DEFAULT 0.0,
+        paid_installments INTEGER DEFAULT 0,
+        start_date INTEGER NOT NULL,
+        next_due_date INTEGER,
+        category TEXT NOT NULL,
+        description TEXT,
+        virtual_bank_id TEXT,
+        is_active INTEGER DEFAULT 1,
+        auto_debit INTEGER DEFAULT 0,
+        auto_debit_day INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+
     print('DatabaseHelper: All tables created successfully');
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+  static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     print('DatabaseHelper: Upgrading database from version $oldVersion to $newVersion');
-    // Handle database upgrades here if needed in future versions
+    
+    if (oldVersion < 2) {
+      // Migration for adding target_date to virtual_banks table
+      try {
+        await db.execute('ALTER TABLE virtual_banks ADD COLUMN target_date INTEGER');
+      } catch (e) {
+        // Column might already exist, ignore error
+        print('Migration warning: $e');
+      }
+    }
+    // Add more migrations here for future versions
   }
 
   // Transaction operations
@@ -252,6 +282,7 @@ class DatabaseHelper {
       'name': virtualBank.name,
       'balance': virtualBank.balance,
       'target_amount': virtualBank.targetAmount,
+      'target_date': virtualBank.targetDate?.millisecondsSinceEpoch, // Handle target date
       'color': virtualBank.color,
       'icon': virtualBank.icon,
       'description': virtualBank.description,
@@ -295,6 +326,7 @@ class DatabaseHelper {
       'name': virtualBank.name,
       'balance': virtualBank.balance,
       'target_amount': virtualBank.targetAmount,
+      'target_date': virtualBank.targetDate?.millisecondsSinceEpoch, // Handle target date
       'color': virtualBank.color,
       'icon': virtualBank.icon,
       'description': virtualBank.description,
@@ -385,6 +417,151 @@ class DatabaseHelper {
       {'is_active': 0, 'updated_at': DateTime.now().millisecondsSinceEpoch},
       where: 'id = ?',
       whereArgs: [id],
+    );
+  }
+
+  // EMI operations
+  Future<int> insertEMI(models.EMI emi) async {
+    final db = await database;
+    
+    final emiMap = {
+      'id': emi.id,
+      'name': emi.name,
+      'lender_name': emi.lenderName,
+      'principal_amount': emi.principalAmount,
+      'interest_rate': emi.interestRate,
+      'tenure_months': emi.tenureMonths,
+      'monthly_emi': emi.monthlyEMI,
+      'total_amount': emi.totalAmount,
+      'total_interest': emi.totalInterest,
+      'paid_amount': emi.paidAmount,
+      'paid_installments': emi.paidInstallments,
+      'start_date': emi.startDate.millisecondsSinceEpoch,
+      'next_due_date': emi.nextDueDate?.millisecondsSinceEpoch,
+      'category': emi.category,
+      'description': emi.description,
+      'virtual_bank_id': emi.virtualBankId,
+      'is_active': emi.isActive ? 1 : 0,
+      'auto_debit': emi.autoDebit ? 1 : 0,
+      'auto_debit_day': emi.autoDebitDay,
+      'created_at': emi.createdAt.millisecondsSinceEpoch,
+      'updated_at': emi.updatedAt.millisecondsSinceEpoch,
+    };
+    
+    return await db.insert('emis', emiMap);
+  }
+
+  Future<List<models.EMI>> getEMIs({bool? isActive}) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('emis');
+    
+    List<models.EMI> emis = maps
+        .map((map) => models.EMI.fromMap(map))
+        .toList();
+
+    if (isActive != null) {
+      emis = emis.where((e) => e.isActive == isActive).toList();
+    }
+
+    // Sort by next due date
+    emis.sort((a, b) {
+      if (a.nextDueDate == null && b.nextDueDate == null) return 0;
+      if (a.nextDueDate == null) return 1;
+      if (b.nextDueDate == null) return -1;
+      return a.nextDueDate!.compareTo(b.nextDueDate!);
+    });
+
+    return emis;
+  }
+
+  Future<models.EMI?> getEMI(String id) async {
+    final db = await database;
+    
+    final List<Map<String, dynamic>> maps = await db.query(
+      'emis',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    
+    if (maps.isNotEmpty) {
+      return models.EMI.fromMap(maps.first);
+    }
+    
+    return null;
+  }
+
+  Future<int> updateEMI(models.EMI emi) async {
+    final db = await database;
+    
+    final emiMap = {
+      'name': emi.name,
+      'lender_name': emi.lenderName,
+      'principal_amount': emi.principalAmount,
+      'interest_rate': emi.interestRate,
+      'tenure_months': emi.tenureMonths,
+      'monthly_emi': emi.monthlyEMI,
+      'total_amount': emi.totalAmount,
+      'total_interest': emi.totalInterest,
+      'paid_amount': emi.paidAmount,
+      'paid_installments': emi.paidInstallments,
+      'start_date': emi.startDate.millisecondsSinceEpoch,
+      'next_due_date': emi.nextDueDate?.millisecondsSinceEpoch,
+      'category': emi.category,
+      'description': emi.description,
+      'virtual_bank_id': emi.virtualBankId,
+      'is_active': emi.isActive ? 1 : 0,
+      'auto_debit': emi.autoDebit ? 1 : 0,
+      'auto_debit_day': emi.autoDebitDay,
+      'updated_at': emi.updatedAt.millisecondsSinceEpoch,
+    };
+    
+    return await db.update(
+      'emis',
+      emiMap,
+      where: 'id = ?',
+      whereArgs: [emi.id],
+    );
+  }
+
+  Future<int> deleteEMI(String id) async {
+    final db = await database;
+    
+    return await db.update(
+      'emis',
+      {'is_active': 0, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> payEMIInstallment(String emiId, double amount) async {
+    final db = await database;
+    final emi = await getEMI(emiId);
+    
+    if (emi == null) return 0;
+    
+    final newPaidAmount = emi.paidAmount + amount;
+    final newPaidInstallments = emi.paidInstallments + 1;
+    
+    // Calculate next due date (add 1 month)
+    DateTime? nextDueDate;
+    if (newPaidInstallments < emi.tenureMonths) {
+      final currentDue = emi.nextDueDate ?? emi.startDate;
+      nextDueDate = DateTime(currentDue.year, currentDue.month + 1, currentDue.day);
+    }
+    
+    final emiMap = {
+      'paid_amount': newPaidAmount,
+      'paid_installments': newPaidInstallments,
+      'next_due_date': nextDueDate?.millisecondsSinceEpoch,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    };
+    
+    return await db.update(
+      'emis',
+      emiMap,
+      where: 'id = ?',
+      whereArgs: [emiId],
     );
   }
 
@@ -534,6 +711,7 @@ class DatabaseHelper {
         name: 'Vacation Fund',
         balance: 15000.0,
         targetAmount: 50000.0,
+        targetDate: DateTime.now().add(const Duration(days: 180)), // 6 months target
         color: '#4CAF50',
         icon: 'flight_takeoff',
         description: 'Saving for trip to Europe',
@@ -558,6 +736,7 @@ class DatabaseHelper {
       await db.delete('transactions');
       await db.delete('virtual_banks');
       await db.delete('budgets');
+      await db.delete('emis');
       
       print('DatabaseHelper: All data cleared successfully');
     } catch (e) {

@@ -12,6 +12,7 @@ class FinanceProvider extends ChangeNotifier {
   List<Transaction> _transactions = [];
   List<VirtualBank> _virtualBanks = [];
   List<Budget> _budgets = [];
+  List<EMI> _emis = [];
   double _totalBalance = 0.0;
   double _totalIncome = 0.0;
   double _totalExpenses = 0.0;
@@ -20,6 +21,7 @@ class FinanceProvider extends ChangeNotifier {
   List<Transaction> get transactions => _transactions;
   List<VirtualBank> get virtualBanks => _virtualBanks;
   List<Budget> get budgets => _budgets;
+  List<EMI> get emis => _emis;
   double get totalBalance => _totalBalance;
   double get totalIncome => _totalIncome;
   double get totalExpenses => _totalExpenses;
@@ -64,6 +66,7 @@ class FinanceProvider extends ChangeNotifier {
     await loadTransactions();
     await loadVirtualBanks();
     await loadBudgets();
+    await loadEMIs();
     
     // Commented out sample data - uncomment if you want to test with sample data
     // if (_transactions.isEmpty && _virtualBanks.isEmpty) {
@@ -236,23 +239,32 @@ class FinanceProvider extends ChangeNotifier {
     required double targetAmount,
     required String color,
     required String icon,
-    required String description,
+    String? description,
+    bool enableAutoSave = false,
+    double? autoSaveAmount,
+    String? autoSaveFrequency,
+    int? autoSaveDay,
+    String? type,
+    String? debitSource,
+    DateTime? targetDate,
   }) async {
-    final virtualBank = VirtualBank(
-      id: _uuid.v4(),
+    final bank = VirtualBank(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
       balance: 0.0,
       targetAmount: targetAmount,
+      targetDate: targetDate,
       color: color,
       icon: icon,
-      description: description,
+      description: description ?? '',
+      type: type ?? 'savings', // Provide default value
+      debitSource: debitSource, // This can be null
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
 
-    await _databaseHelper.insertVirtualBank(virtualBank);
+    await _databaseHelper.insertVirtualBank(bank);
     await loadVirtualBanks();
-    notifyListeners();
   }
 
   Future<void> loadVirtualBanks() async {
@@ -271,6 +283,8 @@ class FinanceProvider extends ChangeNotifier {
         color: virtualBank.color,
         icon: virtualBank.icon,
         description: virtualBank.description,
+        type: virtualBank.type,
+        debitSource: virtualBank.debitSource,
         createdAt: virtualBank.createdAt,
         updatedAt: DateTime.now(),
       );
@@ -308,6 +322,8 @@ class FinanceProvider extends ChangeNotifier {
         color: virtualBank.color,
         icon: virtualBank.icon,
         description: virtualBank.description,
+        type: virtualBank.type,
+        debitSource: virtualBank.debitSource,
         createdAt: virtualBank.createdAt,
         updatedAt: DateTime.now(),
       );
@@ -317,7 +333,7 @@ class FinanceProvider extends ChangeNotifier {
       // Create withdrawal transaction
       final withdrawalTransaction = Transaction(
         type: 'transfer',
-        amount: -amount,
+        amount: amount,
         category: 'Transfer',
         description: 'Withdrawal from ${virtualBank.name}',
         date: DateTime.now(),
@@ -332,6 +348,27 @@ class FinanceProvider extends ChangeNotifier {
       await calculateTotalBalance();
       notifyListeners();
     }
+  }
+
+  // Update virtual bank
+  Future<void> updateVirtualBank(VirtualBank updatedBank) async {
+    await _databaseHelper.updateVirtualBank(updatedBank);
+    await loadVirtualBanks();
+    notifyListeners();
+  }
+
+  // Delete virtual bank
+  Future<void> deleteVirtualBank(String virtualBankId) async {
+    // First check if there are any transactions linked to this virtual bank
+    final linkedTransactions = _transactions.where((t) => t.virtualBankId == virtualBankId).toList();
+    
+    if (linkedTransactions.isNotEmpty) {
+      throw Exception('Cannot delete virtual bank with linked transactions. Please remove or transfer linked transactions first.');
+    }
+    
+    await _databaseHelper.deleteVirtualBank(virtualBankId);
+    await loadVirtualBanks();
+    notifyListeners();
   }
 
   // Budget operations
@@ -408,6 +445,44 @@ class FinanceProvider extends ChangeNotifier {
     );
   }
 
+  // Get monthly transaction summary
+  Map<String, dynamic> getMonthlyTransactionSummary([DateTime? month]) {
+    final targetMonth = month ?? DateTime.now();
+    final startOfMonth = DateTime(targetMonth.year, targetMonth.month, 1);
+    final endOfMonth = DateTime(targetMonth.year, targetMonth.month + 1, 0);
+    
+    final monthTransactions = _transactions.where((t) => 
+      t.date.isAfter(startOfMonth.subtract(const Duration(days: 1))) &&
+      t.date.isBefore(endOfMonth.add(const Duration(days: 1)))).toList();
+    
+    double totalIncome = 0.0;
+    double totalExpenses = 0.0;
+    
+    for (var transaction in monthTransactions) {
+      if (transaction.type == 'income' || 
+          (transaction.type == 'recurring' && _isIncomeCategory(transaction.category))) {
+        totalIncome += transaction.amount;
+      } else if (transaction.type == 'expense' || 
+                 (transaction.type == 'recurring' && !_isIncomeCategory(transaction.category))) {
+        totalExpenses += transaction.amount;
+      }
+    }
+    
+    return {
+      'month': targetMonth,
+      'totalIncome': totalIncome,
+      'totalExpenses': totalExpenses,
+      'netAmount': totalIncome - totalExpenses,
+      'transactionCount': monthTransactions.length,
+      'transactions': monthTransactions,
+    };
+  }
+
+  // Helper method to check if a category is income-related
+  bool _isIncomeCategory(String category) {
+    return incomeCategories.contains(category);
+  }
+
   Future<void> calculateTotalBalance() async {
     // Calculate total income and expenses from transactions
     double totalIncome = 0.0;
@@ -477,31 +552,65 @@ class FinanceProvider extends ChangeNotifier {
           transaction.nextDueDate!.isBefore(now) &&
           transaction.isActive) {
         
-        // Create the actual transaction
-        final actualTransaction = Transaction(
-          type: 'expense',
-          amount: transaction.amount,
-          category: transaction.category,
-          description: '${transaction.description} (Recurring)',
-          date: now,
-          virtualBankId: transaction.virtualBankId,
-          createdAt: now,
-          updatedAt: now,
-        );
+        // Handle auto-save transactions (transfers to virtual banks)
+        if (transaction.category == 'Auto-Save' && transaction.virtualBankId != null) {
+          // Check if user has sufficient balance for auto-save
+          if (_totalBalance >= transaction.amount) {
+            // Transfer to virtual bank
+            await transferToVirtualBank(transaction.virtualBankId!, transaction.amount);
+            
+            print('FinanceProvider: Auto-save executed - ₹${transaction.amount} transferred to virtual bank');
+          } else {
+            print('FinanceProvider: Auto-save skipped - insufficient balance (₹${_totalBalance} < ₹${transaction.amount})');
+            // TODO: Could send notification to user about insufficient funds
+          }
+        } else {
+          // Handle regular recurring transactions
+          final actualTransaction = Transaction(
+            type: transaction.category == 'Salary' || 
+                 transaction.category == 'Freelance' || 
+                 transaction.category == 'Business' || 
+                 transaction.category == 'Investments' ||
+                 transaction.category == 'Rental Income' ||
+                 transaction.category == 'Dividends' ||
+                 transaction.category == 'Interest' ||
+                 transaction.category == 'Bonus' ||
+                 transaction.category == 'Tax Refund' ||
+                 transaction.category == 'Gifts' ||
+                 transaction.category == 'Other Income' ? 'income' : 'expense',
+            amount: transaction.amount,
+            category: transaction.category,
+            description: '${transaction.description} (Recurring)',
+            date: now,
+            virtualBankId: transaction.virtualBankId,
+            createdAt: now,
+            updatedAt: now,
+          );
 
-        await _databaseHelper.insertTransaction(actualTransaction);
+          await _databaseHelper.insertTransaction(actualTransaction);
+
+          // Process virtual bank withdrawal if needed for expenses
+          if (actualTransaction.type == 'expense' && transaction.virtualBankId != null) {
+            await withdrawFromVirtualBank(transaction.virtualBankId!, transaction.amount);
+          }
+        }
 
         // Update next due date
         DateTime nextDue;
         switch (transaction.recurringFrequency) {
           case 'monthly':
-            nextDue = DateTime(now.year, now.month + 1, now.day);
+            // Handle monthly scheduling with proper day handling
+            final currentDay = transaction.nextDueDate!.day;
+            DateTime nextMonth = DateTime(now.year, now.month + 1, 1);
+            int lastDayOfNextMonth = DateTime(nextMonth.year, nextMonth.month + 1, 0).day;
+            int targetDay = currentDay > lastDayOfNextMonth ? lastDayOfNextMonth : currentDay;
+            nextDue = DateTime(nextMonth.year, nextMonth.month, targetDay);
             break;
           case 'weekly':
-            nextDue = now.add(const Duration(days: 7));
+            nextDue = transaction.nextDueDate!.add(const Duration(days: 7));
             break;
           case 'yearly':
-            nextDue = DateTime(now.year + 1, now.month, now.day);
+            nextDue = DateTime(transaction.nextDueDate!.year + 1, transaction.nextDueDate!.month, transaction.nextDueDate!.day);
             break;
           default:
             nextDue = DateTime(now.year, now.month + 1, now.day);
@@ -513,15 +622,11 @@ class FinanceProvider extends ChangeNotifier {
         );
 
         await _databaseHelper.updateTransaction(updatedRecurring);
-
-        // Process virtual bank withdrawal if needed
-        if (transaction.virtualBankId != null) {
-          await withdrawFromVirtualBank(transaction.virtualBankId!, transaction.amount);
-        }
       }
     }
 
     await loadTransactions();
+    await loadVirtualBanks();
     await calculateTotalBalance();
     notifyListeners();
   }
@@ -615,6 +720,7 @@ class FinanceProvider extends ChangeNotifier {
       _transactions = [];
       _virtualBanks = [];
       _budgets = [];
+      _emis = [];
       _totalBalance = 0.0;
       _totalIncome = 0.0;
       _totalExpenses = 0.0;
@@ -627,6 +733,236 @@ class FinanceProvider extends ChangeNotifier {
       print('FinanceProvider: ERROR clearing data: $e');
       rethrow;
     }
+  }
+
+  // EMI operations
+  Future<void> createEMI({
+    required String name,
+    required String lenderName,
+    required double principalAmount,
+    required double interestRate,
+    required int tenureMonths,
+    required DateTime startDate,
+    required String category,
+    String? description,
+    String? virtualBankId,
+    bool autoDebit = false,
+    int? autoDebitDay,
+  }) async {
+    final emiId = _uuid.v4();
+    
+    // Calculate EMI details
+    final monthlyEMI = EMI.calculateEMI(principalAmount, interestRate, tenureMonths);
+    final totalAmount = monthlyEMI * tenureMonths;
+    final totalInterest = totalAmount - principalAmount;
+    
+    // Calculate first due date
+    DateTime firstDueDate;
+    if (autoDebit && autoDebitDay != null) {
+      // Set first due date to the specified day of next month
+      final nextMonth = DateTime(startDate.year, startDate.month + 1, 1);
+      final lastDayOfNextMonth = DateTime(nextMonth.year, nextMonth.month + 1, 0).day;
+      final targetDay = autoDebitDay > lastDayOfNextMonth ? lastDayOfNextMonth : autoDebitDay;
+      firstDueDate = DateTime(nextMonth.year, nextMonth.month, targetDay);
+    } else {
+      // Default to one month from start date
+      firstDueDate = DateTime(startDate.year, startDate.month + 1, startDate.day);
+    }
+    
+    final emi = EMI(
+      id: emiId,
+      name: name,
+      lenderName: lenderName,
+      principalAmount: principalAmount,
+      interestRate: interestRate,
+      tenureMonths: tenureMonths,
+      monthlyEMI: monthlyEMI,
+      totalAmount: totalAmount,
+      totalInterest: totalInterest,
+      startDate: startDate,
+      nextDueDate: firstDueDate,
+      category: category,
+      description: description,
+      virtualBankId: virtualBankId,
+      autoDebit: autoDebit,
+      autoDebitDay: autoDebitDay,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    await _databaseHelper.insertEMI(emi);
+    
+    // If auto-debit is enabled, create a recurring transaction
+    if (autoDebit && autoDebitDay != null) {
+      final autoDebitTransaction = Transaction(
+        type: 'recurring',
+        amount: monthlyEMI,
+        category: 'EMI Payment',
+        description: 'Auto EMI payment for $name',
+        date: DateTime.now(),
+        virtualBankId: virtualBankId,
+        isRecurring: true,
+        recurringFrequency: 'monthly',
+        nextDueDate: firstDueDate,
+        isActive: true,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      await _databaseHelper.insertTransaction(autoDebitTransaction);
+      print('FinanceProvider: Created auto-debit recurring transaction for EMI: $name');
+    }
+    
+    await loadEMIs();
+    await loadTransactions();
+    notifyListeners();
+  }
+
+  Future<void> loadEMIs() async {
+    _emis = await _databaseHelper.getEMIs(isActive: true);
+    notifyListeners();
+  }
+
+  Future<void> payEMIInstallment(String emiId, {double? customAmount, String? virtualBankId}) async {
+    final emi = await _databaseHelper.getEMI(emiId);
+    if (emi == null || emi.isCompleted) return;
+    
+    final paymentAmount = customAmount ?? emi.monthlyEMI;
+    
+    // Update EMI payment details
+    await _databaseHelper.payEMIInstallment(emiId, paymentAmount);
+    
+    // Create payment transaction
+    final paymentTransaction = Transaction(
+      type: 'expense',
+      amount: paymentAmount,
+      category: 'EMI Payment',
+      description: 'EMI payment for ${emi.name} - Installment ${emi.paidInstallments + 1}',
+      date: DateTime.now(),
+      virtualBankId: virtualBankId ?? emi.virtualBankId,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+    
+    await _databaseHelper.insertTransaction(paymentTransaction);
+    
+    // If paid from virtual bank, withdraw the amount
+    if (virtualBankId != null || emi.virtualBankId != null) {
+      final bankId = virtualBankId ?? emi.virtualBankId!;
+      await withdrawFromVirtualBank(bankId, paymentAmount);
+    }
+    
+    await loadEMIs();
+    await loadTransactions();
+    await calculateTotalBalance();
+    notifyListeners();
+  }
+
+  Future<void> updateEMI(EMI updatedEMI) async {
+    await _databaseHelper.updateEMI(updatedEMI);
+    await loadEMIs();
+    notifyListeners();
+  }
+
+  Future<void> deleteEMI(String emiId) async {
+    // Check if there are any transactions linked to this EMI
+    final linkedTransactions = _transactions.where((t) => 
+      t.description.contains('EMI payment') && 
+      t.description.contains(_emis.firstWhere((e) => e.id == emiId, orElse: () => 
+        EMI(id: '', name: '', lenderName: '', principalAmount: 0, interestRate: 0, 
+             tenureMonths: 0, monthlyEMI: 0, totalAmount: 0, totalInterest: 0, 
+             startDate: DateTime.now(), category: '', createdAt: DateTime.now(), 
+             updatedAt: DateTime.now())).name)
+    ).toList();
+    
+    if (linkedTransactions.isNotEmpty) {
+      throw Exception('Cannot delete EMI with payment history. Please archive it instead.');
+    }
+    
+    await _databaseHelper.deleteEMI(emiId);
+    await loadEMIs();
+    notifyListeners();
+  }
+
+  // Process auto-debit EMI payments
+  Future<void> processEMIAutoDebits() async {
+    final now = DateTime.now();
+    
+    for (var emi in _emis) {
+      if (emi.autoDebit && 
+          emi.nextDueDate != null && 
+          emi.nextDueDate!.isBefore(now) && 
+          !emi.isCompleted) {
+        
+        // Check if sufficient balance is available
+        bool canPay = false;
+        if (emi.virtualBankId != null) {
+          final virtualBank = await _databaseHelper.getVirtualBank(emi.virtualBankId!);
+          canPay = virtualBank != null && virtualBank.balance >= emi.monthlyEMI;
+        } else {
+          canPay = _totalBalance >= emi.monthlyEMI;
+        }
+        
+        if (canPay) {
+          await payEMIInstallment(emi.id, virtualBankId: emi.virtualBankId);
+          print('FinanceProvider: Auto-debit EMI payment executed for ${emi.name}: ₹${emi.monthlyEMI}');
+        } else {
+          print('FinanceProvider: Auto-debit EMI payment skipped for ${emi.name} - insufficient balance');
+          // TODO: Could send notification to user about insufficient funds
+        }
+      }
+    }
+  }
+
+  // Get EMI insights
+  Map<String, dynamic> getEMIInsights() {
+    if (_emis.isEmpty) {
+      return {
+        'totalMonthlyEMI': 0.0,
+        'totalRemainingAmount': 0.0,
+        'totalInterestSaved': 0.0,
+        'upcomingPayments': <EMI>[],
+        'completedEMIs': 0,
+      };
+    }
+    
+    double totalMonthlyEMI = 0.0;
+    double totalRemainingAmount = 0.0;
+    double totalInterestSaved = 0.0;
+    List<EMI> upcomingPayments = [];
+    int completedEMIs = 0;
+    
+    final now = DateTime.now();
+    final nextWeek = now.add(const Duration(days: 7));
+    
+    for (var emi in _emis) {
+      if (!emi.isCompleted) {
+        totalMonthlyEMI += emi.monthlyEMI;
+        totalRemainingAmount += emi.remainingAmount;
+        
+        if (emi.nextDueDate != null && emi.nextDueDate!.isBefore(nextWeek)) {
+          upcomingPayments.add(emi);
+        }
+      } else {
+        completedEMIs++;
+        // Calculate interest saved if any (for early payments)
+        if (emi.paidAmount < emi.totalAmount) {
+          totalInterestSaved += (emi.totalAmount - emi.paidAmount);
+        }
+      }
+    }
+    
+    // Sort upcoming payments by due date
+    upcomingPayments.sort((a, b) => a.nextDueDate!.compareTo(b.nextDueDate!));
+    
+    return {
+      'totalMonthlyEMI': totalMonthlyEMI,
+      'totalRemainingAmount': totalRemainingAmount,
+      'totalInterestSaved': totalInterestSaved,
+      'upcomingPayments': upcomingPayments,
+      'completedEMIs': completedEMIs,
+      'activeEMIs': _emis.where((e) => !e.isCompleted).length,
+    };
   }
 
   Future<void> _loadCategoriesFromPreferences() async {
