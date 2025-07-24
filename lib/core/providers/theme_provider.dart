@@ -5,31 +5,48 @@ import 'package:provider/provider.dart';
 class ThemeProvider extends ChangeNotifier {
   static const String _themeKey = 'theme_mode';
   bool _isDarkMode = false;
+  bool _isInitialized = false;
 
   bool get isDarkMode => _isDarkMode;
+  bool get isInitialized => _isInitialized;
 
   ThemeProvider() {
     _loadTheme();
   }
 
-  void _loadTheme() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isDarkMode = prefs.getBool(_themeKey) ?? false;
-    notifyListeners();
+  Future<void> _loadTheme() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _isDarkMode = prefs.getBool(_themeKey) ?? false;
+      _isInitialized = true;
+      notifyListeners();
+    } catch (e) {
+      print('ThemeProvider: Error loading theme: $e');
+      _isInitialized = true;
+      notifyListeners();
+    }
   }
 
   void toggleTheme() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isDarkMode = !_isDarkMode;
-    await prefs.setBool(_themeKey, _isDarkMode);
-    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _isDarkMode = !_isDarkMode;
+      await prefs.setBool(_themeKey, _isDarkMode);
+      notifyListeners();
+    } catch (e) {
+      print('ThemeProvider: Error toggling theme: $e');
+    }
   }
 
   void setTheme(bool isDark) async {
-    final prefs = await SharedPreferences.getInstance();
-    _isDarkMode = isDark;
-    await prefs.setBool(_themeKey, _isDarkMode);
-    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _isDarkMode = isDark;
+      await prefs.setBool(_themeKey, _isDarkMode);
+      notifyListeners();
+    } catch (e) {
+      print('ThemeProvider: Error setting theme: $e');
+    }
   }
 }
 

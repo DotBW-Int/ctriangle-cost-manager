@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/models.dart' as models;
 
 // Add web-specific imports
@@ -20,34 +21,40 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    // Initialize web database factory if on web
-    if (kIsWeb) {
-      databaseFactory = databaseFactoryFfiWeb;
+    try {
+      // Initialize web database factory if on web
+      if (kIsWeb) {
+        databaseFactory = databaseFactoryFfiWeb;
+      }
+      
+      // Use a consistent database name
+      String dbName = 'cost_manager.db';
+      String path;
+      
+      if (kIsWeb) {
+        // For web, use just the database name - it will be stored in IndexedDB
+        path = dbName;
+      } else {
+        // For mobile platforms (iOS/Android), use the proper path
+        final documentsDirectory = await getApplicationDocumentsDirectory();
+        path = join(documentsDirectory.path, dbName);
+      }
+      
+      print('DatabaseHelper: Initializing database at: $path');
+      print('DatabaseHelper: Platform: ${kIsWeb ? 'Web' : 'Native'}');
+      
+      return await openDatabase(
+        path,
+        version: 1,
+        onCreate: _createTables,
+        onUpgrade: _onUpgrade,
+        readOnly: false,
+        singleInstance: true,
+      );
+    } catch (e) {
+      print('DatabaseHelper: ERROR initializing database: $e');
+      rethrow;
     }
-    
-    // Use a consistent database name
-    String dbName = 'cost_manager.db';
-    String path;
-    
-    if (kIsWeb) {
-      // For web, use just the database name - it will be stored in IndexedDB
-      path = dbName;
-    } else {
-      // For mobile platforms (iOS/Android), use the proper path
-      path = join(await getDatabasesPath(), dbName);
-    }
-    
-    print('DatabaseHelper: Initializing database at: $path');
-    print('DatabaseHelper: Platform: ${kIsWeb ? 'Web' : 'Native'}');
-    
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: _createTables,
-      onUpgrade: _onUpgrade,
-      readOnly: false,
-      singleInstance: true,
-    );
   }
 
   Future<void> _createTables(Database db, int version) async {
