@@ -43,6 +43,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
+        bottom: false, // Allow content to extend to bottom edge
         child: CustomScrollView(
           slivers: [
             _buildAppBar(),
@@ -61,6 +62,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   _buildMonthlySummary(),
                   const SizedBox(height: 16),
                   _buildTransactionsList(),
+                  // Add bottom padding to account for safe area
+                  SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
                 ]),
               ),
             ),

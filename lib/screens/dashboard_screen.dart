@@ -165,23 +165,33 @@ class _DashboardScreenState extends State<DashboardScreen>
     
     return Scaffold(
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            _buildAppBar(),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), // Restored bottom padding for FAB
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _buildBalanceCard(),
-                  const SizedBox(height: 16),
-                  _buildQuickActionsSection(),
-                  const SizedBox(height: 16),
-                  _buildRecentTransactions(),
-                  const SizedBox(height: 16),
-                  _buildExpenseChart(),
-                  const SizedBox(height: 16),
-                  _buildFinancialInsights(),
-                ]),
+        bottom: false, // Allow content to extend to bottom edge
+        child: Column(
+          children: [
+            // Fixed app bar
+            _buildFixedAppBar(),
+            // Main content with proper scrolling
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16), // Restore normal bottom padding
+                  child: Column(
+                    children: [
+                      _buildBalanceCard(),
+                      const SizedBox(height: 16),
+                      _buildQuickActionsSection(),
+                      const SizedBox(height: 16),
+                      _buildRecentTransactions(),
+                      const SizedBox(height: 16),
+                      _buildExpenseChart(),
+                      const SizedBox(height: 16),
+                      _buildFinancialInsights(),
+                      // Add bottom padding to account for floating action button and safe area
+                      SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -202,116 +212,94 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildAppBar() {
+  Widget _buildFixedAppBar() {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         final isDarkMode = themeProvider.isDarkMode;
-        // Use theme background colors for consistency
         final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
         final iconColor = isDarkMode ? Colors.white70 : Colors.grey[600];
         
-        return SliverAppBar(
-          expandedHeight: 70, // Reduced from 100
-          floating: false,
-          pinned: true,
-          backgroundColor: backgroundColor,
-          surfaceTintColor: backgroundColor,
-          shadowColor: Colors.transparent,
-          elevation: 0,
-          collapsedHeight: 60, // Reduced from 70
-          flexibleSpace: LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final double shrinkOffset = 
-                  (constraints.maxHeight - kToolbarHeight - MediaQuery.of(context).padding.top) / 
-                  (70 - kToolbarHeight - MediaQuery.of(context).padding.top);
-              
-              final bool isCollapsed = shrinkOffset <= 0.0;
-              
-              return Container(
-                decoration: BoxDecoration(
-                  color: backgroundColor,
-                ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Left side - "CT" logo with progress line below
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // "CT" logo
-                              RichText(
-                                text: TextSpan(
-                                  children: [
-                                    TextSpan(
-                                      text: 'C',
-                                      style: TextStyle(
-                                        fontSize: isCollapsed ? 22 : 26,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primaryBlue, // Always blue
-                                      ),
-                                    ),
-                                    TextSpan(
-                                      text: 'T',
-                                      style: TextStyle(
-                                        fontSize: isCollapsed ? 22 : 26,
-                                        fontWeight: FontWeight.bold,
-                                        color: isDarkMode ? Colors.white : Colors.black87,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // Progress line below the logo
-                              const SizedBox(height: 4),
-                              SizedBox(
-                                width: 35, // Match CT logo width exactly
-                                child: _buildAnimatedProgressLine(),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Right side - Action buttons
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
+        return Container(
+          height: 70, // Fixed height
+          decoration: BoxDecoration(
+            color: backgroundColor,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Left side - "CT" logo with progress line below
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // "CT" logo
+                      RichText(
+                        text: TextSpan(
                           children: [
-                            // Profile/Settings Button
-                            IconButton(
-                              onPressed: () => _navigateToSettings(),
-                              icon: Icon(
-                                Icons.person_outline,
-                                color: iconColor,
-                                size: isCollapsed ? 18 : 20,
+                            TextSpan(
+                              text: 'C',
+                              style: TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primaryBlue, // Always blue
                               ),
-                              tooltip: 'Profile & Settings',
                             ),
-                            // Theme Toggle Button
-                            IconButton(
-                              onPressed: () => themeProvider.toggleTheme(),
-                              icon: Icon(
-                                themeProvider.isDarkMode 
-                                    ? Icons.light_mode 
-                                    : Icons.dark_mode,
-                                color: themeProvider.isDarkMode 
-                                    ? Colors.amber
-                                    : Colors.grey[700],
-                                size: isCollapsed ? 18 : 20,
+                            TextSpan(
+                              text: 'T',
+                              style: TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: isDarkMode ? Colors.white : Colors.black87,
                               ),
-                              tooltip: 'Toggle Theme',
                             ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                      // Progress line below the logo
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 35, // Match CT logo width exactly
+                        child: _buildAnimatedProgressLine(),
+                      ),
+                    ],
                   ),
                 ),
-              );
-            },
+                // Right side - Action buttons
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Profile/Settings Button
+                    IconButton(
+                      onPressed: () => _navigateToSettings(),
+                      icon: Icon(
+                        Icons.person_outline,
+                        color: iconColor,
+                        size: 20,
+                      ),
+                      tooltip: 'Profile & Settings',
+                    ),
+                    // Theme Toggle Button
+                    IconButton(
+                      onPressed: () => themeProvider.toggleTheme(),
+                      icon: Icon(
+                        themeProvider.isDarkMode 
+                            ? Icons.light_mode 
+                            : Icons.dark_mode,
+                        color: themeProvider.isDarkMode 
+                            ? Colors.amber
+                            : Colors.grey[700],
+                        size: 20,
+                      ),
+                      tooltip: 'Toggle Theme',
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -859,103 +847,180 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ],
         ),
+        onTap: () => _showTransactionDetails(transaction), // Add tap functionality
       ),
     );
   }
 
-  void _showRevertTransactionDialog(Transaction transaction) {
-    showDialog(
+  // Add transaction details dialog functionality
+  void _showTransactionDetails(Transaction transaction) {
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Revert Transaction'),
-          content: Text(
-            'Are you sure you want to revert "${transaction.description}"?\n\n'
-            'This will create a new ${transaction.type == 'expense' ? 'income' : 'expense'} '
-            'transaction of ₹${_currencyFormat.format(transaction.amount)} to cancel out this transaction.',
-            style: const TextStyle(height: 1.5),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(context).pop();
-                await _revertTransaction(transaction);
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red,
-              ),
-              child: const Text('Revert Transaction'),
-            ),
-          ],
-        );
-      },
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildTransactionDetailsSheet(transaction),
     );
   }
 
-  Future<void> _revertTransaction(Transaction transaction) async {
-    try {
-      // Show loading indicator
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return const AlertDialog(
-            content: Row(
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(width: 20),
-                Text('Reverting transaction...'),
-              ],
+  Widget _buildTransactionDetailsSheet(Transaction transaction) {
+    final isIncome = _isIncomeTransaction(transaction);
+    final color = isIncome ? Colors.green : Colors.red;
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          );
-        },
-      );
-
-      // Create reversed transaction with correct logic and all required fields
-      final isOriginalExpense = transaction.type == 'expense';
-      final reversedTransaction = Transaction(
-        id: null, // New transaction, so no ID
-        description: 'Revert: ${transaction.description}',
-        amount: transaction.amount, // Keep same amount
-        date: DateTime.now(),
-        category: transaction.category,
-        type: isOriginalExpense ? 'income' : 'expense', // Opposite type
-        createdAt: DateTime.now(), // Add required createdAt field
-        updatedAt: DateTime.now(), // Add required updatedAt field
-      );
-      
-      await context.read<FinanceProvider>().addTransaction(reversedTransaction);
-
-      // Close loading dialog
-      if (mounted) {
-        Navigator.of(context).pop();
-        
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Transaction reverted successfully!'),
-            backgroundColor: Colors.green,
           ),
-        );
-      }
-    } catch (e) {
-      // Close loading dialog if open
-      if (mounted) {
-        Navigator.of(context).pop();
-        
-        // Show error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error reverting transaction: $e'),
-            backgroundColor: Colors.red,
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isIncome ? Icons.arrow_downward : Icons.arrow_upward,
+                  color: color,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      transaction.description,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${isIncome ? '+' : '-'} ${_currencyFormat.format(transaction.amount)}',
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        );
-      }
-    }
+          const SizedBox(height: 24),
+          _buildDetailRow('Category', transaction.category),
+          _buildDetailRow('Date', DateFormat('EEEE, MMM dd, yyyy').format(transaction.date)),
+          _buildDetailRow('Type', transaction.type.toUpperCase()),
+          if (transaction.isRecurring) ...[
+            _buildDetailRow('Frequency', transaction.recurringFrequency ?? 'N/A'),
+            if (transaction.nextDueDate != null)
+              _buildDetailRow('Next Due', DateFormat('MMM dd, yyyy').format(transaction.nextDueDate!)),
+          ],
+          if (transaction.virtualBankId != null)
+            _buildDetailRow('Virtual Bank', 'Yes'),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Close', style: TextStyle(fontSize: 16)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    // TODO: Navigate to edit transaction
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Edit functionality coming soon!'),
+                        backgroundColor: AppTheme.primaryBlue,
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryBlue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Edit', style: TextStyle(fontSize: 16)),
+                ),
+              ),
+            ],
+          ),
+          // Add bottom padding for safe area
+          SizedBox(height: MediaQuery.of(context).padding.bottom),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+                fontSize: 14,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isIncomeTransaction(Transaction transaction) {
+    return transaction.type == 'income' || 
+           (transaction.type == 'recurring' && _isIncomeCategory(transaction.category));
   }
 
   Widget _buildExpenseChart() {
@@ -973,7 +1038,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
             final data = snapshot.data!;
             final sortedEntries = data.entries.toList()
-              ..sort((a, b) => b.value.compareTo(a.value)); // Sort by amount descending
+              ..sort((a, b) => b.value.compareTo(a.value));
             
             return Card(
               child: Padding(
@@ -1195,20 +1260,96 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  IconData _getIconData(String iconName) {
-    switch (iconName) {
-      case 'savings':
-        return Icons.savings;
-      case 'security':
-        return Icons.security;
-      case 'flight':
-        return Icons.flight;
-      case 'home':
-        return Icons.home;
-      case 'car':
-        return Icons.directions_car;
-      default:
-        return Icons.account_balance;
+  void _showRevertTransactionDialog(Transaction transaction) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Revert Transaction'),
+          content: const Text(
+            'Are you sure you want to revert this transaction? This will create a new transaction with the opposite amount.',
+            style: TextStyle(height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _revertTransaction(transaction);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Revert Transaction'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _revertTransaction(Transaction transaction) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Text('Reverting transaction...'),
+              ],
+            ),
+          );
+        },
+      );
+
+      // Create reversed transaction with correct logic and all required fields
+      final isOriginalExpense = transaction.type == 'expense';
+      final reversedTransaction = Transaction(
+        id: null, // New transaction, so no ID
+        description: 'Revert: ${transaction.description}',
+        amount: transaction.amount, // Keep same amount
+        date: DateTime.now(),
+        category: transaction.category,
+        type: isOriginalExpense ? 'income' : 'expense', // Opposite type
+        createdAt: DateTime.now(), // Add required createdAt field
+        updatedAt: DateTime.now(), // Add required updatedAt field
+      );
+      
+      await context.read<FinanceProvider>().addTransaction(reversedTransaction);
+
+      // Close loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transaction reverted successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if open
+      if (mounted) {
+        Navigator.of(context).pop();
+        
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error reverting transaction: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1217,14 +1358,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => AddTransactionBottomSheet(initialType: type),
-    );
-  }
-
-  void _showCreateVirtualBankDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => const CreateVirtualBankDialog(),
+      builder: (context) => AddTransactionBottomSheet(
+        initialType: type,
+      ),
     );
   }
 
@@ -1250,16 +1386,5 @@ class _DashboardScreenState extends State<DashboardScreen>
         builder: (context) => const VirtualBanksScreen(),
       ),
     );
-  }
-
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) {
-      return 'Morning';
-    } else if (hour < 17) {
-      return 'Afternoon';
-    } else {
-      return 'Evening';
-    }
   }
 }
