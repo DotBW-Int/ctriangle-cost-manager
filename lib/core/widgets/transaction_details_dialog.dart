@@ -276,37 +276,122 @@ class _TransactionDetailsSheet extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             ...transaction.editHistory!.map((edit) => _buildAuditEntry(context, edit)),
-            if (transaction.originalTransactionId != null) ...[
+            
+            // Show link to edited version if this is an original transaction
+            if (transaction.editHistory!.any((edit) => edit['action'] == 'spawned_edit')) ...[
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.orange.withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.link,
-                      color: Colors.orange[700],
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'This transaction was created from editing Transaction #${transaction.originalTransactionId}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.orange[700],
-                          fontWeight: FontWeight.w500,
+              FutureBuilder<Transaction?>(
+                future: _findEditedVersion(context),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData && snapshot.data != null) {
+                    final editedTransaction = snapshot.data!;
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.blue.withOpacity(0.3),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.arrow_forward,
+                            color: Colors.blue[700],
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'This transaction was edited and created Transaction #${editedTransaction.transactionNumber}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => _showLinkedTransaction(context, editedTransaction),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                            ),
+                            child: Text(
+                              'View',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.blue[700],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+            
+            // Show link to original transaction if this is an edited transaction
+            if (transaction.originalTransactionId != null) ...[
+              const SizedBox(height: 12),
+              FutureBuilder<Transaction?>(
+                future: _findOriginalTransaction(context),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData && snapshot.data != null) {
+                    final originalTransaction = snapshot.data!;
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.archive,
+                            color: Colors.orange[700],
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Original archived transaction #${originalTransaction.transactionNumber} (edited)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.orange[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => _showLinkedTransaction(context, originalTransaction),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                            ),
+                            child: Text(
+                              'View Original',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.orange[700],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
               ),
             ],
           ],
@@ -632,5 +717,56 @@ class _TransactionDetailsSheet extends StatelessWidget {
 
   bool _isIncomeCategory(String category) {
     return FinanceProvider.incomeCategories.contains(category);
+  }
+
+  Future<Transaction?> _findEditedVersion(BuildContext context) async {
+    try {
+      // Find the edit history entry that indicates this transaction spawned an edit
+      final spawnedEditEntry = transaction.editHistory?.where(
+        (edit) => edit['action'] == 'spawned_edit'
+      ).firstOrNull;
+      
+      if (spawnedEditEntry != null) {
+        final newTransactionNumber = spawnedEditEntry['new_transaction_number'];
+        if (newTransactionNumber != null) {
+          // Use the provider's existing transactions list to find the edited version
+          final financeProvider = context.read<FinanceProvider>();
+          final allTransactions = financeProvider.transactions;
+          
+          return allTransactions.where((t) => t.transactionNumber == newTransactionNumber).firstOrNull;
+        }
+      }
+    } catch (e) {
+      print('Error finding edited version: $e');
+    }
+    
+    return null;
+  }
+
+  Future<Transaction?> _findOriginalTransaction(BuildContext context) async {
+    try {
+      if (transaction.originalTransactionId != null) {
+        final financeProvider = context.read<FinanceProvider>();
+        return await financeProvider.getTransactionById(transaction.originalTransactionId!);
+      }
+    } catch (e) {
+      print('Error finding original transaction: $e');
+    }
+    
+    return null;
+  }
+
+  void _showLinkedTransaction(BuildContext context, Transaction linkedTransaction) {
+    // Logic to show the linked transaction details
+    // This can be similar to how the transaction details are shown in the modal
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _TransactionDetailsSheet(
+        transaction: linkedTransaction,
+        currencyFormat: currencyFormat,
+      ),
+    );
   }
 }

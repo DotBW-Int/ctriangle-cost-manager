@@ -88,11 +88,18 @@ class Transaction {
 
   static List<Map<String, dynamic>>? _parseEditHistory(String? editHistoryStr) {
     if (editHistoryStr == null || editHistoryStr.isEmpty) return null;
+    
     try {
+      // First, try to parse as proper JSON
       final decoded = jsonDecode(editHistoryStr) as List;
       return decoded.cast<Map<String, dynamic>>();
     } catch (e) {
-      print('Error parsing edit history: $e');
+      print('Error parsing edit history as JSON: $e');
+      print('Raw edit history string: $editHistoryStr');
+      
+      // If JSON parsing fails, it might be in Dart toString format
+      // For now, return null to prevent crashes
+      // TODO: Consider migrating old data to proper JSON format
       return null;
     }
   }

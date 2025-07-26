@@ -17,7 +17,7 @@ class TransactionsScreen extends StatefulWidget {
 
 class _TransactionsScreenState extends State<TransactionsScreen> {
   String _selectedFilter = 'all';
-  String _sortBy = 'date';
+  String _sortBy = 'number'; // Changed from 'date' to 'number' for transaction number
   String _sortOrder = 'desc';
   String _timeFilter = 'month';
   DateTime _selectedMonth = DateTime.now();
@@ -124,6 +124,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             });
           },
           itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'number_desc',
+              child: Text('Transaction # (Newest First)', style: TextStyle(fontSize: 14)),
+            ),
+            const PopupMenuItem(
+              value: 'number_asc',
+              child: Text('Transaction # (Oldest First)', style: TextStyle(fontSize: 14)),
+            ),
             const PopupMenuItem(
               value: 'date_desc',
               child: Text('Date (Newest First)', style: TextStyle(fontSize: 14)),
@@ -922,6 +930,19 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     filtered.sort((a, b) {
       int comparison = 0;
       switch (_sortBy) {
+        case 'number':
+          // Sort by transaction number (handle null values)
+          if (a.transactionNumber != null && b.transactionNumber != null) {
+            comparison = a.transactionNumber!.compareTo(b.transactionNumber!);
+          } else if (a.transactionNumber == null && b.transactionNumber != null) {
+            comparison = 1; // Put transactions without numbers at the end
+          } else if (a.transactionNumber != null && b.transactionNumber == null) {
+            comparison = -1; // Put transactions with numbers first
+          } else {
+            // Both are null, fallback to date
+            comparison = a.date.compareTo(b.date);
+          }
+          break;
         case 'date':
           comparison = a.date.compareTo(b.date);
           break;
@@ -946,7 +967,20 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   String _getSortDescription() {
-    final sortType = _sortBy == 'date' ? 'Date' : 'Amount';
+    String sortType;
+    switch (_sortBy) {
+      case 'number':
+        sortType = 'Transaction #';
+        break;
+      case 'date':
+        sortType = 'Date';
+        break;
+      case 'amount':
+        sortType = 'Amount';
+        break;
+      default:
+        sortType = 'Transaction #';
+    }
     final order = _sortOrder == 'desc' ? 'Newest First' : 'Oldest First';
     return 'Sorted by $sortType ($order)';
   }

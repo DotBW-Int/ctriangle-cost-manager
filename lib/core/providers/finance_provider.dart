@@ -256,21 +256,22 @@ class FinanceProvider extends ChangeNotifier {
     Transaction newTransaction, 
     Map<String, dynamic> changes
   ) async {
-    print('FinanceProvider: Processing significant transaction edit with step-by-step reversal');
+    print('FinanceProvider: Processing significant transaction edit with original archived');
     
     final newTransactionNumber = _generateTransactionNumber();
     print('FinanceProvider: Generated new transaction number: $newTransactionNumber');
     
-    // Step 1: Create audit record of the original transaction
-    final auditTransaction = originalTransaction.copyWith(
-      isActive: false, // Mark original as inactive
+    // Step 1: Archive the original transaction (mark as INACTIVE)
+    final archivedOriginal = originalTransaction.copyWith(
+      isActive: false, // Mark original as inactive (hidden from main list)
       editHistory: [
         ...?originalTransaction.editHistory,
         {
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'action': 'archived_for_edit',
           'changes': changes,
-          'new_transaction_number': newTransactionNumber, // Use transaction number for reference
+          'new_transaction_number': newTransactionNumber,
+          'note': 'Original transaction archived when edited - accessible via audit trail',
         }
       ],
       updatedAt: DateTime.now(),
@@ -279,8 +280,8 @@ class FinanceProvider extends ChangeNotifier {
     // Step 2: Carefully reverse the financial impact of original transaction
     await _reverseTransactionImpact(originalTransaction);
     
-    // Step 3: Update the original to archived status
-    await _databaseHelper.updateTransaction(auditTransaction);
+    // Step 3: Update the original transaction to archived status
+    await _databaseHelper.updateTransaction(archivedOriginal);
     
     // Step 4: Create completely new transaction with fresh data
     final now = DateTime.now();
@@ -298,8 +299,8 @@ class FinanceProvider extends ChangeNotifier {
       isRecurring: newTransaction.isRecurring,
       recurringFrequency: newTransaction.recurringFrequency,
       nextDueDate: newTransaction.nextDueDate,
-      isActive: true,
-      originalTransactionId: originalTransaction.id, // Link to original
+      isActive: true, // New transaction is active and visible
+      originalTransactionId: originalTransaction.id, // Link to archived original
       editHistory: [
         {
           'timestamp': now.millisecondsSinceEpoch,
@@ -307,6 +308,7 @@ class FinanceProvider extends ChangeNotifier {
           'original_transaction_id': originalTransaction.id,
           'original_transaction_number': originalTransaction.transactionNumber,
           'changes': changes,
+          'note': 'This transaction was created by editing the original',
         }
       ],
       createdAt: now,
@@ -322,8 +324,8 @@ class FinanceProvider extends ChangeNotifier {
       await _updateVirtualBankBalance(editedTransaction.virtualBankId!, editedTransaction.amount, editedTransaction.type);
     }
     
-    print('FinanceProvider: Created new transaction with number $newTransactionNumber, original archived as inactive');
-    print('FinanceProvider: Transaction edit completed with full audit trail');
+    print('FinanceProvider: Created new transaction with number $newTransactionNumber');
+    print('FinanceProvider: Original transaction archived (accessible via audit trail)');
   }
 
   // Handle minor edits (description, date only)
@@ -451,6 +453,81 @@ class FinanceProvider extends ChangeNotifier {
     auditTrail.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     
     return auditTrail;
+  }
+
+  // Virtual bank creation
+  Future<void> createVirtualBank({
+    required String name,
+    required double targetAmount,
+    required String color,
+    required String icon,
+    required String description,
+    bool enableAutoSave = false,
+    double? autoSaveAmount,
+    String? autoSaveFrequency,
+    int? autoSaveDay,
+    String type = 'savings',
+    String debitSource = 'bank_account',
+    DateTime? targetDate,
+  }) async {
+    final virtualBankId = _uuid.v4();
+    
+    final virtualBank = VirtualBank(
+      id: virtualBankId,
+      name: name,
+      balance: 0.0,
+      targetAmount: targetAmount,
+      targetDate: targetDate,
+      color: color,
+      icon: icon,
+      description: description,
+      type: type,
+      debitSource: debitSource,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    await _databaseHelper.insertVirtualBank(virtualBank);
+    
+    // If auto-save is enabled, create a recurring transaction
+    if (enableAutoSave && autoSaveAmount != null && autoSaveFrequency != null && autoSaveDay != null) {
+      // Calculate first due date based on frequency and day
+      DateTime firstDueDate;
+      final now = DateTime.now();
+      
+      if (autoSaveFrequency == 'weekly') {
+        // Find next occurrence of the specified day of week
+        final daysUntilTarget = (autoSaveDay - now.weekday) % 7;
+        firstDueDate = now.add(Duration(days: daysUntilTarget == 0 ? 7 : daysUntilTarget));
+      } else { // monthly
+        // Set to the specified day of next month
+        final nextMonth = DateTime(now.year, now.month + 1, 1);
+        final lastDayOfNextMonth = DateTime(nextMonth.year, nextMonth.month + 1, 0).day;
+        final targetDay = autoSaveDay > lastDayOfNextMonth ? lastDayOfNextMonth : autoSaveDay;
+        firstDueDate = DateTime(nextMonth.year, nextMonth.month, targetDay);
+      }
+      
+      final autoSaveTransaction = Transaction(
+        type: 'recurring',
+        amount: autoSaveAmount,
+        category: 'Auto-Save',
+        description: 'Auto-save to $name',
+        date: DateTime.now(),
+        virtualBankId: virtualBankId,
+        isRecurring: true,
+        recurringFrequency: autoSaveFrequency,
+        nextDueDate: firstDueDate,
+        isActive: true,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      await _databaseHelper.insertTransaction(autoSaveTransaction);
+    }
+    
+    await loadVirtualBanks();
+    await loadTransactions();
+    notifyListeners();
   }
 
   Future<void> loadVirtualBanks() async {
@@ -900,10 +977,13 @@ class FinanceProvider extends ChangeNotifier {
       _totalIncome = 0.0;
       _totalExpenses = 0.0;
       
+      // Reset transaction numbering to start from 1
+      _nextTransactionNumber = 1;
+      
       // Notify listeners to refresh UI
       notifyListeners();
       
-      print('FinanceProvider: All data cleared successfully');
+      print('FinanceProvider: All data cleared successfully, transaction numbering reset to 1');
     } catch (e) {
       print('FinanceProvider: ERROR clearing data: $e');
       rethrow;
@@ -1157,6 +1237,16 @@ class FinanceProvider extends ChangeNotifier {
     await prefs.setString('income_categories', jsonEncode(incomeCategories));
   }
 
+  // Get transaction by ID (including inactive transactions for audit trail)
+  Future<Transaction?> getTransactionById(int transactionId) async {
+    final allTransactions = await _databaseHelper.getTransactions(includeInactive: true);
+    try {
+      return allTransactions.firstWhere((t) => t.id == transactionId);
+    } catch (e) {
+      return null;
+    }
+  }
+
   // Delete/Revert transaction (marks as inactive for audit trail)
   Future<void> deleteTransaction(int transactionId) async {
     print('FinanceProvider: Deleting/reverting transaction $transactionId');
@@ -1164,27 +1254,16 @@ class FinanceProvider extends ChangeNotifier {
     try {
       final transaction = _transactions.firstWhere((t) => t.id == transactionId);
       
-      // Step 1: Reverse the financial impact of the transaction
-      await _reverseTransactionImpact(transaction);
+      // Check if this is an edited transaction (has originalTransactionId)
+      if (transaction.originalTransactionId != null) {
+        print('FinanceProvider: This is an edited transaction, restoring original');
+        await _revertEditedTransaction(transaction);
+      } else {
+        print('FinanceProvider: This is an original transaction, performing simple revert');
+        await _revertOriginalTransaction(transaction);
+      }
       
-      // Step 2: Mark transaction as inactive (soft delete for audit trail)
-      final deletedTransaction = transaction.copyWith(
-        isActive: false,
-        editHistory: [
-          ...?transaction.editHistory,
-          {
-            'timestamp': DateTime.now().millisecondsSinceEpoch,
-            'action': 'deleted',
-            'reason': 'user_requested_deletion',
-          }
-        ],
-        updatedAt: DateTime.now(),
-      );
-      
-      // Step 3: Update in database
-      await _databaseHelper.updateTransaction(deletedTransaction);
-      
-      // Step 4: Reload data and recalculate balances
+      // Reload data and recalculate balances
       await loadTransactions();
       await loadVirtualBanks();
       await calculateTotalBalance();
@@ -1197,85 +1276,93 @@ class FinanceProvider extends ChangeNotifier {
     }
   }
 
-  // Virtual Bank operations
-  Future<void> createVirtualBank({
-    required String name,
-    required double targetAmount,
-    required String color,
-    required String icon,
-    required String description,
-    String type = 'savings',
-    String debitSource = 'bank_account',
-    DateTime? targetDate,
-    bool enableAutoSave = false,
-    double? autoSaveAmount,
-    String? autoSaveFrequency,
-    int? autoSaveDay,
-  }) async {
-    final virtualBankId = _uuid.v4();
+  // Revert an edited transaction and restore the original
+  Future<void> _revertEditedTransaction(Transaction editedTransaction) async {
+    final originalTransactionId = editedTransaction.originalTransactionId!;
     
-    final virtualBank = VirtualBank(
-      id: virtualBankId,
-      name: name,
-      balance: 0.0,
-      targetAmount: targetAmount,
-      targetDate: targetDate,
-      color: color,
-      icon: icon,
-      description: description,
-      type: type,
-      debitSource: debitSource,
-      createdAt: DateTime.now(),
+    // Step 1: Find the original (archived) transaction
+    final allTransactions = await _databaseHelper.getTransactions(includeInactive: true);
+    final originalTransaction = allTransactions.firstWhere(
+      (t) => t.id == originalTransactionId,
+      orElse: () => throw Exception('Original transaction not found'),
+    );
+    
+    print('FinanceProvider: Found original transaction #${originalTransaction.transactionNumber}');
+    
+    // Step 2: Reverse the financial impact of the edited transaction
+    await _reverseTransactionImpact(editedTransaction);
+    
+    // Step 3: Mark the edited transaction as reverted (inactive)
+    final revertedEditedTransaction = editedTransaction.copyWith(
+      isActive: false,
+      editHistory: [
+        ...?editedTransaction.editHistory,
+        {
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'action': 'reverted',
+          'reason': 'user_requested_revert_to_original',
+          'restored_original_id': originalTransactionId,
+          'restored_original_number': originalTransaction.transactionNumber,
+        }
+      ],
       updatedAt: DateTime.now(),
     );
-
-    await _databaseHelper.insertVirtualBank(virtualBank);
     
-    // If auto-save is enabled, create a recurring transaction
-    if (enableAutoSave && autoSaveAmount != null && autoSaveFrequency != null && autoSaveDay != null) {
-      DateTime nextAutoSaveDate;
-      
-      if (autoSaveFrequency == 'weekly') {
-        // Calculate next occurrence of the specified weekday
-        final now = DateTime.now();
-        final daysUntilTarget = (autoSaveDay - now.weekday) % 7;
-        nextAutoSaveDate = now.add(Duration(days: daysUntilTarget == 0 ? 7 : daysUntilTarget));
-      } else { // monthly
-        // Calculate next occurrence of the specified day of month
-        final now = DateTime.now();
-        final targetMonth = autoSaveDay <= now.day ? now.month + 1 : now.month;
-        final targetYear = targetMonth > 12 ? now.year + 1 : now.year;
-        final adjustedMonth = targetMonth > 12 ? 1 : targetMonth;
-        
-        // Handle end-of-month cases
-        final lastDayOfTargetMonth = DateTime(targetYear, adjustedMonth + 1, 0).day;
-        final adjustedDay = autoSaveDay > lastDayOfTargetMonth ? lastDayOfTargetMonth : autoSaveDay;
-        
-        nextAutoSaveDate = DateTime(targetYear, adjustedMonth, adjustedDay);
+    await _databaseHelper.updateTransaction(revertedEditedTransaction);
+    
+    // Step 4: Restore the original transaction to active status
+    final restoredOriginalTransaction = originalTransaction.copyWith(
+      isActive: true, // Restore to active
+      editHistory: [
+        ...?originalTransaction.editHistory,
+        {
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'action': 'restored_from_revert',
+          'reverted_edit_id': editedTransaction.id,
+          'reverted_edit_number': editedTransaction.transactionNumber,
+          'note': 'Original transaction restored after edit was reverted',
+        }
+      ],
+      updatedAt: DateTime.now(),
+    );
+    
+    await _databaseHelper.updateTransaction(restoredOriginalTransaction);
+    
+    // Step 5: Apply the financial impact of the restored original transaction
+    if (restoredOriginalTransaction.virtualBankId != null) {
+      if (restoredOriginalTransaction.type == 'expense') {
+        await _updateVirtualBankBalance(
+          restoredOriginalTransaction.virtualBankId!, 
+          restoredOriginalTransaction.amount, 
+          restoredOriginalTransaction.type
+        );
       }
-      
-      final autoSaveTransaction = Transaction(
-        type: 'recurring',
-        amount: autoSaveAmount,
-        category: 'Auto-Save',
-        description: 'Auto-save to ${name}',
-        date: DateTime.now(),
-        virtualBankId: virtualBankId,
-        isRecurring: true,
-        recurringFrequency: autoSaveFrequency,
-        nextDueDate: nextAutoSaveDate,
-        isActive: true,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-      
-      await _databaseHelper.insertTransaction(autoSaveTransaction);
     }
     
-    await loadVirtualBanks();
-    await loadTransactions();
-    notifyListeners();
+    print('FinanceProvider: Original transaction #${originalTransaction.transactionNumber} restored to active');
+    print('FinanceProvider: Edited transaction #${editedTransaction.transactionNumber} marked as reverted');
+  }
+
+  // Revert an original transaction (simple case)
+  Future<void> _revertOriginalTransaction(Transaction transaction) async {
+    // Step 1: Reverse the financial impact of the transaction
+    await _reverseTransactionImpact(transaction);
     
-    print('FinanceProvider: Virtual bank "${name}" created successfully with ID: $virtualBankId');
+    // Step 2: Mark transaction as inactive (soft delete for audit trail)
+    final deletedTransaction = transaction.copyWith(
+      isActive: false,
+      editHistory: [
+        ...?transaction.editHistory,
+        {
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'action': 'deleted',
+          'reason': 'user_requested_deletion',
+        }
+      ],
+      updatedAt: DateTime.now(),
+    );
+    
+    // Step 3: Update in database
+    await _databaseHelper.updateTransaction(deletedTransaction);
   }
 }

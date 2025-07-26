@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:convert'; // Add this import for jsonEncode
 import '../models/models.dart' as models;
 
 // Add web-specific imports
@@ -191,11 +192,13 @@ class DatabaseHelper {
   // Transaction operations
   Future<int> insertTransaction(models.Transaction transaction) async {
     print('DatabaseHelper: Inserting transaction - ${transaction.type}: ₹${transaction.amount} - ${transaction.description}');
+    print('DatabaseHelper: Transaction ID: ${transaction.id}, Transaction Number: ${transaction.transactionNumber}');
     
     try {
       final db = await database;
       
       final transactionMap = {
+        // Do NOT include 'id' in the map to ensure auto-increment works
         'transaction_number': transaction.transactionNumber,
         'type': transaction.type,
         'amount': transaction.amount,
@@ -207,16 +210,21 @@ class DatabaseHelper {
         'is_recurring': transaction.isRecurring ? 1 : 0,
         'recurring_frequency': transaction.recurringFrequency,
         'next_due_date': transaction.nextDueDate?.millisecondsSinceEpoch,
-        'is_active': transaction.isActive ? 1 : 0, // This was the bug - should be 1 for active transactions
+        'is_active': transaction.isActive ? 1 : 0,
         'created_at': transaction.createdAt.millisecondsSinceEpoch,
         'updated_at': transaction.updatedAt.millisecondsSinceEpoch,
-        'edit_history': transaction.editHistory?.toString(),
+        'edit_history': transaction.editHistory != null 
+            ? jsonEncode(transaction.editHistory) 
+            : null,
+        'original_transaction_id': transaction.originalTransactionId,
       };
       
-      print('DatabaseHelper: Transaction map - is_active: ${transactionMap['is_active']}, isActive: ${transaction.isActive}');
+      print('DatabaseHelper: Transaction map keys: ${transactionMap.keys.toList()}');
+      print('DatabaseHelper: is_active value: ${transactionMap['is_active']}');
+      print('DatabaseHelper: original_transaction_id: ${transactionMap['original_transaction_id']}');
       
       final id = await db.insert('transactions', transactionMap);
-      print('DatabaseHelper: Transaction inserted with ID: $id');
+      print('DatabaseHelper: Transaction inserted with NEW ID: $id');
       
       return id;
     } catch (e) {
@@ -264,8 +272,20 @@ class DatabaseHelper {
         transactions = transactions.where((t) => t.date.isBefore(endDate) || t.date.isAtSameMomentAs(endDate)).toList();
       }
 
-      // Sort by date (newest first)
-      transactions.sort((a, b) => b.date.compareTo(a.date));
+      // Sort by transaction number (newest first), then by date as fallback
+      transactions.sort((a, b) {
+        // Primary sort by transaction number (descending - highest numbers first)
+        if (a.transactionNumber != null && b.transactionNumber != null) {
+          final numberComparison = b.transactionNumber!.compareTo(a.transactionNumber!);
+          if (numberComparison != 0) return numberComparison;
+        }
+        // If one has no transaction number, put it at the end
+        if (a.transactionNumber == null && b.transactionNumber != null) return 1;
+        if (a.transactionNumber != null && b.transactionNumber == null) return -1;
+        
+        // Fallback to date sorting (newest first)
+        return b.date.compareTo(a.date);
+      });
       
       if (limit != null && limit > 0) {
         transactions = transactions.take(limit).toList();
@@ -296,6 +316,10 @@ class DatabaseHelper {
       'is_active': transaction.isActive ? 1 : 0,
       'created_at': transaction.createdAt.millisecondsSinceEpoch,
       'updated_at': transaction.updatedAt.millisecondsSinceEpoch,
+      'edit_history': transaction.editHistory != null 
+          ? jsonEncode(transaction.editHistory) 
+          : null,
+      'original_transaction_id': transaction.originalTransactionId,
     };
     
     return await db.update(
