@@ -4,14 +4,13 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../core/providers/finance_provider.dart';
 import '../core/providers/theme_provider.dart';
-import '../core/widgets/brand_logo.dart';
-import '../core/theme/app_theme.dart';
 import '../core/models/models.dart';
-import 'add_transaction_screen.dart';
-import 'settings_screen.dart';
-import 'transactions_screen.dart';
-import 'emi_screen.dart';
-import 'virtual_banks_screen.dart';
+import '../core/theme/app_theme.dart';
+import '../core/widgets/add_transaction_bottom_sheet.dart';
+import '../screens/transactions_screen.dart';
+import '../screens/emi_screen.dart';
+import '../screens/virtual_banks_screen.dart';
+import '../screens/settings_screen.dart';
 import '../core/widgets/create_virtual_bank_dialog.dart';
 
 class DashboardScreen extends StatefulWidget {

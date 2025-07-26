@@ -237,6 +237,32 @@ class Budget {
   double get remainingAmount => amount - spent;
   double get progressPercentage => amount > 0 ? (spent / amount).clamp(0.0, 1.0) : 0.0;
   bool get isOverBudget => spent > amount;
+
+  Budget copyWith({
+    int? id,
+    String? category,
+    double? amount,
+    double? spent,
+    String? period,
+    DateTime? startDate,
+    DateTime? endDate,
+    bool? isActive,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return Budget(
+      id: id ?? this.id,
+      category: category ?? this.category,
+      amount: amount ?? this.amount,
+      spent: spent ?? this.spent,
+      period: period ?? this.period,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 }
 
 class EMI {

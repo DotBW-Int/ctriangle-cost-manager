@@ -68,7 +68,7 @@ class FinanceProvider extends ChangeNotifier {
     await loadBudgets();
     await loadEMIs();
     
-    // Commented out sample data - uncomment if you want to test with sample data
+    // Removed automatic sample data insertion - users should get a clean app
     // if (_transactions.isEmpty && _virtualBanks.isEmpty) {
     //   print('FinanceProvider: No data found, adding sample data...');
     //   await _addSampleData();
@@ -78,156 +78,86 @@ class FinanceProvider extends ChangeNotifier {
     await _loadCategoriesFromPreferences();
   }
 
-  // Add sample data for testing
-  Future<void> _addSampleData() async {
-    try {
-      // Add sample transactions
-      final sampleTransactions = [
-        Transaction(
-          type: 'income',
-          amount: 5000.0,
-          category: 'Salary',
-          description: 'Monthly Salary',
-          date: DateTime.now().subtract(const Duration(days: 5)),
-          isRecurring: true,
-          recurringFrequency: 'monthly',
-          nextDueDate: DateTime.now().add(const Duration(days: 25)),
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-        Transaction(
-          type: 'expense',
-          amount: 1200.0,
-          category: 'Food & Dining',
-          description: 'Grocery Shopping',
-          date: DateTime.now().subtract(const Duration(days: 2)),
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-        Transaction(
-          type: 'expense',
-          amount: 800.0,
-          category: 'Transportation',
-          description: 'Monthly Bus Pass',
-          date: DateTime.now().subtract(const Duration(days: 1)),
-          isRecurring: true,
-          recurringFrequency: 'monthly',
-          nextDueDate: DateTime.now().add(const Duration(days: 29)),
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-        Transaction(
-          type: 'income',
-          amount: 2000.0,
-          category: 'Freelance',
-          description: 'Web Development Project',
-          date: DateTime.now().subtract(const Duration(days: 3)),
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-        Transaction(
-          type: 'expense',
-          amount: 500.0,
-          category: 'Bills & Utilities',
-          description: 'Electricity Bill',
-          date: DateTime.now().subtract(const Duration(days: 4)),
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-      ];
-
-      for (var transaction in sampleTransactions) {
-        await _databaseHelper.insertTransaction(transaction);
+  // Helper method to update virtual bank balance
+  Future<void> _updateVirtualBankBalance(String virtualBankId, double amount, String transactionType) async {
+    final virtualBank = await _databaseHelper.getVirtualBank(virtualBankId);
+    if (virtualBank != null) {
+      double newBalance = virtualBank.balance;
+      
+      // Update balance based on transaction type
+      if (transactionType == 'income') {
+        newBalance += amount;
+      } else if (transactionType == 'expense') {
+        newBalance -= amount;
       }
-
-      // Add sample virtual bank
-      final sampleBank = VirtualBank(
-        id: 'vacation_fund',
-        name: 'Vacation Fund',
-        balance: 15000.0,
-        targetAmount: 50000.0,
-        color: '#4CAF50',
-        icon: 'flight_takeoff',
-        description: 'Saving for trip to Europe',
-        createdAt: DateTime.now(),
+      
+      final updatedBank = VirtualBank(
+        id: virtualBank.id,
+        name: virtualBank.name,
+        balance: newBalance,
+        targetAmount: virtualBank.targetAmount,
+        targetDate: virtualBank.targetDate,
+        color: virtualBank.color,
+        icon: virtualBank.icon,
+        description: virtualBank.description,
+        type: virtualBank.type,
+        debitSource: virtualBank.debitSource,
+        createdAt: virtualBank.createdAt,
         updatedAt: DateTime.now(),
       );
 
-      await _databaseHelper.insertVirtualBank(sampleBank);
-
-      // Add sample budget
-      final sampleBudget = Budget(
-        category: 'Food & Dining',
-        amount: 2000.0,
-        spent: 1200.0,
-        period: 'monthly',
-        startDate: DateTime(DateTime.now().year, DateTime.now().month, 1),
-        endDate: DateTime(DateTime.now().year, DateTime.now().month + 1, 0),
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-
-      await _databaseHelper.insertBudget(sampleBudget);
-
-      // Reload all data
-      await loadTransactions();
+      await _databaseHelper.updateVirtualBank(updatedBank);
       await loadVirtualBanks();
-      await loadBudgets();
-
-      print('FinanceProvider: Sample data added successfully');
-    } catch (e) {
-      print('FinanceProvider: ERROR adding sample data: $e');
     }
   }
 
   // Transaction operations
   Future<void> addTransaction(Transaction transaction) async {
-    print('FinanceProvider: Adding transaction - ${transaction.type}: ₹${transaction.amount}');
-    
     await _databaseHelper.insertTransaction(transaction);
-    
-    print('FinanceProvider: Transaction inserted, now loading transactions...');
     await loadTransactions();
     
-    print('FinanceProvider: Loaded ${_transactions.length} transactions, calculating balance...');
-    await calculateTotalBalance();
+    // Update virtual bank balance if applicable
+    if (transaction.virtualBankId != null) {
+      await _updateVirtualBankBalance(transaction.virtualBankId!, transaction.amount, transaction.type);
+    }
     
-    print('FinanceProvider: Updating budget spending...');
-    await updateBudgetSpending(transaction);
-    
-    print('FinanceProvider: Notifying listeners...');
     notifyListeners();
-    
-    print('FinanceProvider: Transaction add process completed');
   }
 
   Future<void> loadTransactions() async {
-    print('FinanceProvider: Loading transactions from database...');
     _transactions = await _databaseHelper.getTransactions();
-    print('FinanceProvider: Loaded ${_transactions.length} transactions');
-    
-    // Debug: Print each transaction
-    for (var transaction in _transactions) {
-      print('Transaction: ${transaction.type} - ₹${transaction.amount} - ${transaction.description} - Active: ${transaction.isActive}');
-    }
-    
     notifyListeners();
   }
 
   Future<void> updateTransaction(Transaction transaction) async {
     await _databaseHelper.updateTransaction(transaction);
     await loadTransactions();
-    await calculateTotalBalance();
     notifyListeners();
   }
 
   Future<void> deleteTransaction(int id) async {
+    final transaction = _transactions.firstWhere((t) => t.id == id);
+    
+    // Revert virtual bank balance if applicable
+    if (transaction.virtualBankId != null) {
+      final reverseType = transaction.type == 'income' 
+          ? 'expense' 
+          : 'income';
+      await _updateVirtualBankBalance(transaction.virtualBankId!, transaction.amount, reverseType);
+    }
+    
     await _databaseHelper.deleteTransaction(id);
+    await loadTransactions();
+    notifyListeners();
+  }
+
+  Future<void> reverseTransaction(int transactionId) async {
+    final transaction = _transactions.firstWhere((t) => t.id == transactionId);
+    final updatedTransaction = transaction.copyWith(
+      isActive: false,
+      updatedAt: DateTime.now(),
+    );
+    await _databaseHelper.updateTransaction(updatedTransaction);
     await loadTransactions();
     await calculateTotalBalance();
     notifyListeners();
@@ -395,33 +325,39 @@ class FinanceProvider extends ChangeNotifier {
   }
 
   Future<void> loadBudgets() async {
-    _budgets = await _databaseHelper.getBudgets(isActive: true);
+    _budgets = await _databaseHelper.getBudgets();
+    for (var budget in _budgets) {
+      await updateBudgetSpending(null, budget: budget);
+    }
     notifyListeners();
   }
 
-  Future<void> updateBudgetSpending(Transaction transaction) async {
-    if (transaction.type == 'expense') {
-      for (var budget in _budgets) {
-        if (budget.category == transaction.category &&
-            transaction.date.isAfter(budget.startDate) &&
-            transaction.date.isBefore(budget.endDate)) {
-          final updatedBudget = Budget(
-            id: budget.id,
-            category: budget.category,
-            amount: budget.amount,
-            spent: budget.spent + transaction.amount,
-            period: budget.period,
-            startDate: budget.startDate,
-            endDate: budget.endDate,
-            createdAt: budget.createdAt,
-            updatedAt: DateTime.now(),
-          );
+  Future<void> updateBudget(Budget budget) async {
+    await _databaseHelper.updateBudget(budget);
+    await loadBudgets();
+    notifyListeners();
+  }
 
-          await _databaseHelper.updateBudget(updatedBudget);
-        }
-      }
-      await loadBudgets();
-    }
+  Future<void> deleteBudget(int id) async {
+    await _databaseHelper.deleteBudget(id);
+    await loadBudgets();
+    notifyListeners();
+  }
+
+  Future<void> updateBudgetSpending(String? category, {Budget? budget}) async {
+    final budgetToUpdate = budget ?? _budgets.firstWhere((b) => b.category == category);
+    
+    final spent = _transactions
+        .where((t) => t.category == budgetToUpdate.category && 
+                     t.type == 'expense' && 
+                     t.isActive)
+        .fold(0.0, (sum, t) => sum + t.amount);
+    
+    final updatedBudget = budgetToUpdate.copyWith(
+      spent: spent,
+      updatedAt: DateTime.now(),
+    );
+    await _databaseHelper.updateBudget(updatedBudget);
   }
 
   // Analytics
@@ -484,34 +420,16 @@ class FinanceProvider extends ChangeNotifier {
   }
 
   Future<void> calculateTotalBalance() async {
-    // Calculate total income and expenses from transactions
     double totalIncome = 0.0;
     double totalExpenses = 0.0;
     
     for (var transaction in _transactions) {
+      if (!transaction.isActive) continue;
+      
       if (transaction.type == 'income') {
         totalIncome += transaction.amount;
       } else if (transaction.type == 'expense') {
         totalExpenses += transaction.amount;
-      } else if (transaction.type == 'recurring') {
-        // Recurring transactions should be treated based on their category
-        if (transaction.category == 'Salary' || 
-            transaction.category == 'Freelance' || 
-            transaction.category == 'Business' || 
-            transaction.category == 'Investments' ||
-            transaction.category == 'Rental Income' ||
-            transaction.category == 'Dividends' ||
-            transaction.category == 'Interest' ||
-            transaction.category == 'Bonus' ||
-            transaction.category == 'Tax Refund' ||
-            transaction.category == 'Gifts' ||
-            transaction.category == 'Other Income') {
-          // It's recurring income
-          totalIncome += transaction.amount;
-        } else {
-          // It's recurring expense
-          totalExpenses += transaction.amount;
-        }
       }
       // Skip transfer transactions as they're internal movements
     }
@@ -527,11 +445,6 @@ class FinanceProvider extends ChangeNotifier {
     
     // Don't subtract virtual banks from total, they're part of total assets
     // _totalBalance -= virtualBankTotal; // Removed this line
-    
-    print('Total Income: ₹$totalIncome');
-    print('Total Expenses: ₹$totalExpenses'); 
-    print('Virtual Banks Total: ₹$virtualBankTotal');
-    print('Final Balance: ₹$_totalBalance');
     
     // Update provider properties
     _totalIncome = totalIncome;
@@ -558,11 +471,6 @@ class FinanceProvider extends ChangeNotifier {
           if (_totalBalance >= transaction.amount) {
             // Transfer to virtual bank
             await transferToVirtualBank(transaction.virtualBankId!, transaction.amount);
-            
-            print('FinanceProvider: Auto-save executed - ₹${transaction.amount} transferred to virtual bank');
-          } else {
-            print('FinanceProvider: Auto-save skipped - insufficient balance (₹${_totalBalance} < ₹${transaction.amount})');
-            // TODO: Could send notification to user about insufficient funds
           }
         } else {
           // Handle regular recurring transactions
@@ -810,7 +718,6 @@ class FinanceProvider extends ChangeNotifier {
       );
       
       await _databaseHelper.insertTransaction(autoDebitTransaction);
-      print('FinanceProvider: Created auto-debit recurring transaction for EMI: $name');
     }
     
     await loadEMIs();
@@ -905,10 +812,6 @@ class FinanceProvider extends ChangeNotifier {
         
         if (canPay) {
           await payEMIInstallment(emi.id, virtualBankId: emi.virtualBankId);
-          print('FinanceProvider: Auto-debit EMI payment executed for ${emi.name}: ₹${emi.monthlyEMI}');
-        } else {
-          print('FinanceProvider: Auto-debit EMI payment skipped for ${emi.name} - insufficient balance');
-          // TODO: Could send notification to user about insufficient funds
         }
       }
     }

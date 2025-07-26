@@ -24,6 +24,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   double _minAmount = 0;
   double _maxAmount = double.infinity;
   bool _showFilters = false;
+  String _searchQuery = '';
   
   late NumberFormat _currencyFormat;
   
@@ -49,6 +50,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               padding: const EdgeInsets.all(16),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
+                  _buildSearchBar(),
+                  const SizedBox(height: 16),
                   _buildFilterChips(),
                   if (_showFilters) ...[
                     const SizedBox(height: 16),
@@ -69,7 +72,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   Widget _buildAppBar() {
     return SliverAppBar(
-      expandedHeight: 120,
+      expandedHeight: 100, // Reduced from 120
       floating: false,
       pinned: true,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -81,6 +84,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         icon: Icon(
           Icons.arrow_back_ios,
           color: Theme.of(context).textTheme.bodyLarge?.color,
+          size: 20, // Smaller icon
         ),
       ),
       flexibleSpace: FlexibleSpaceBar(
@@ -88,6 +92,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           'All Transactions',
           style: TextStyle(
             fontWeight: FontWeight.bold,
+            fontSize: 18, // Reduced from default
           ),
         ),
         titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
@@ -102,6 +107,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           icon: Icon(
             _showFilters ? Icons.filter_list_off : Icons.filter_list,
             color: _showFilters ? AppTheme.primaryBlue : null,
+            size: 20, // Smaller icon
           ),
           tooltip: 'Toggle Filters',
         ),
@@ -116,25 +122,83 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           itemBuilder: (context) => [
             const PopupMenuItem(
               value: 'date_desc',
-              child: Text('Date (Newest First)'),
+              child: Text('Date (Newest First)', style: TextStyle(fontSize: 14)),
             ),
             const PopupMenuItem(
               value: 'date_asc',
-              child: Text('Date (Oldest First)'),
+              child: Text('Date (Oldest First)', style: TextStyle(fontSize: 14)),
             ),
             const PopupMenuItem(
               value: 'amount_desc',
-              child: Text('Amount (High to Low)'),
+              child: Text('Amount (High to Low)', style: TextStyle(fontSize: 14)),
             ),
             const PopupMenuItem(
               value: 'amount_asc',
-              child: Text('Amount (Low to High)'),
+              child: Text('Amount (Low to High)', style: TextStyle(fontSize: 14)),
             ),
           ],
-          icon: const Icon(Icons.sort),
+          icon: const Icon(Icons.sort, size: 20), // Smaller icon
           tooltip: 'Sort Options',
         ),
       ],
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextField(
+        style: const TextStyle(fontSize: 16),
+        decoration: InputDecoration(
+          hintText: 'Search transactions...',
+          hintStyle: TextStyle(
+            color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
+            fontSize: 16,
+          ),
+          prefixIcon: Container(
+            padding: const EdgeInsets.all(12),
+            child: Icon(
+              Icons.search_rounded,
+              color: AppTheme.primaryBlue,
+              size: 24,
+            ),
+          ),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: Icon(
+                    Icons.clear_rounded,
+                    color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                  },
+                )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        ),
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value;
+          });
+        },
+      ),
     );
   }
 
@@ -143,24 +207,24 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       spacing: 8,
       children: [
         FilterChip(
-          label: const Text('All'),
+          label: const Text('All', style: TextStyle(fontSize: 12)),
           selected: _selectedFilter == 'all',
           onSelected: (_) => setState(() => _selectedFilter = 'all'),
         ),
         FilterChip(
-          label: const Text('Income'),
+          label: const Text('Income', style: TextStyle(fontSize: 12)),
           selected: _selectedFilter == 'income',
           onSelected: (_) => setState(() => _selectedFilter = 'income'),
           selectedColor: Colors.green.withOpacity(0.2),
         ),
         FilterChip(
-          label: const Text('Expense'),
+          label: const Text('Expense', style: TextStyle(fontSize: 12)),
           selected: _selectedFilter == 'expense',
           onSelected: (_) => setState(() => _selectedFilter = 'expense'),
           selectedColor: Colors.red.withOpacity(0.2),
         ),
         FilterChip(
-          label: const Text('Recurring'),
+          label: const Text('Recurring', style: TextStyle(fontSize: 12)),
           selected: _selectedFilter == 'recurring',
           onSelected: (_) => setState(() => _selectedFilter = 'recurring'),
           selectedColor: Colors.orange.withOpacity(0.2),
@@ -170,106 +234,314 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   Widget _buildAdvancedFilters() {
-    return Card(
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Theme.of(context).cardColor,
+            Theme.of(context).cardColor.withOpacity(0.8),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Advanced Filters',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _timeFilter,
-                    decoration: const InputDecoration(
-                      labelText: 'Time Period',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppTheme.primaryBlue, AppTheme.lightBlue],
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 'week', child: Text('This Week')),
-                      DropdownMenuItem(value: 'month', child: Text('This Month')),
-                      DropdownMenuItem(value: 'year', child: Text('This Year')),
-                      DropdownMenuItem(value: 'all', child: Text('All Time')),
-                    ],
-                    onChanged: (value) => setState(() => _timeFilter = value!),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.tune_rounded,
+                    color: Colors.white,
+                    size: 20,
                   ),
                 ),
                 const SizedBox(width: 12),
+                Text(
+                  'Advanced Filters',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            
+            // Time Period and Date Selection Row
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                      ),
+                    ),
+                    child: DropdownButtonFormField<String>(
+                      value: _timeFilter,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Time Period',
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.primaryBlue,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        prefixIcon: Icon(
+                          Icons.calendar_month_rounded,
+                          color: AppTheme.primaryBlue,
+                          size: 20,
+                        ),
+                      ),
+                      dropdownColor: Theme.of(context).cardColor,
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'week', 
+                          child: Text('This Week', style: TextStyle(fontSize: 14))
+                        ),
+                        DropdownMenuItem(
+                          value: 'month', 
+                          child: Text('This Month', style: TextStyle(fontSize: 14))
+                        ),
+                        DropdownMenuItem(
+                          value: 'year', 
+                          child: Text('This Year', style: TextStyle(fontSize: 14))
+                        ),
+                        DropdownMenuItem(
+                          value: 'all', 
+                          child: Text('All Time', style: TextStyle(fontSize: 14))
+                        ),
+                      ],
+                      onChanged: (value) => setState(() => _timeFilter = value!),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
                 if (_timeFilter == 'month')
                   Expanded(
-                    child: InkWell(
-                      onTap: _selectMonth,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Month',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
                         ),
-                        child: Text(DateFormat('MMM yyyy').format(_selectedMonth)),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: _selectMonth,
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Month',
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.primaryBlue,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            prefixIcon: Icon(
+                              Icons.event_rounded,
+                              color: AppTheme.primaryBlue,
+                              size: 20,
+                            ),
+                          ),
+                          child: Text(
+                            DateFormat('MMM yyyy').format(_selectedMonth),
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 if (_timeFilter == 'year')
                   Expanded(
-                    child: InkWell(
-                      onTap: _selectYear,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Year',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
                         ),
-                        child: Text(_selectedYear.year.toString()),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: _selectYear,
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Year',
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.primaryBlue,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            prefixIcon: Icon(
+                              Icons.calendar_today_rounded,
+                              color: AppTheme.primaryBlue,
+                              size: 20,
+                            ),
+                          ),
+                          child: Text(
+                            _selectedYear.year.toString(),
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
                       ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            
+            // Amount Range Row
             Row(
               children: [
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Min Amount',
-                      prefixText: '₹ ',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                      ),
                     ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      setState(() {
-                        _minAmount = double.tryParse(value) ?? 0;
-                      });
-                    },
+                    child: TextFormField(
+                      style: const TextStyle(fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'Min Amount',
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.primaryBlue,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        prefixText: '₹ ',
+                        prefixStyle: TextStyle(
+                          fontSize: 14,
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        prefixIcon: Icon(
+                          Icons.currency_rupee_rounded,
+                          color: AppTheme.primaryBlue,
+                          size: 20,
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (value) {
+                        setState(() {
+                          _minAmount = double.tryParse(value) ?? 0;
+                        });
+                      },
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 16),
                 Expanded(
-                  child: TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Max Amount',
-                      prefixText: '₹ ',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                      ),
                     ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (value) {
-                      setState(() {
-                        _maxAmount = double.tryParse(value) ?? double.infinity;
-                      });
-                    },
+                    child: TextFormField(
+                      style: const TextStyle(fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'Max Amount',
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.primaryBlue,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        prefixText: '₹ ',
+                        prefixStyle: TextStyle(
+                          fontSize: 14,
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        prefixIcon: Icon(
+                          Icons.currency_rupee_rounded,
+                          color: AppTheme.primaryBlue,
+                          size: 20,
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (value) {
+                        setState(() {
+                          _maxAmount = double.tryParse(value) ?? double.infinity;
+                        });
+                      },
+                    ),
                   ),
                 ),
               ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Clear Filters Button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _selectedFilter = 'all';
+                    _timeFilter = 'month';
+                    _selectedMonth = DateTime.now();
+                    _selectedYear = DateTime.now();
+                    _minAmount = 0;
+                    _maxAmount = double.infinity;
+                  });
+                },
+                icon: const Icon(Icons.clear_all_rounded, size: 18),
+                label: const Text('Clear All Filters'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.surface,
+                  foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -295,12 +567,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       'Monthly Summary',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
+                        fontSize: 16, // Smaller title
                       ),
                     ),
                     Text(
                       DateFormat('MMM yyyy').format(_selectedMonth),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.grey[600],
+                        fontSize: 12, // Smaller text
                       ),
                     ),
                   ],
@@ -347,13 +621,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           color: summary['netAmount'] >= 0 ? Colors.green : Colors.red,
+                          fontSize: 14, // Smaller text
                         ),
                       ),
                       Text(
                         _currencyFormat.format(summary['netAmount']),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: 14, // Reduced from 16
                           color: summary['netAmount'] >= 0 ? Colors.green : Colors.red,
                         ),
                       ),
@@ -401,7 +676,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               style: TextStyle(
                 color: color,
                 fontWeight: FontWeight.bold,
-                fontSize: 14,
+                fontSize: 13, // Reduced from 14
               ),
             ),
           ],
@@ -429,12 +704,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   'Transactions (${filteredTransactions.length})',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
+                    fontSize: 16, // Smaller title
                   ),
                 ),
                 Text(
                   _getSortDescription(),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Colors.grey[600],
+                    fontSize: 11, // Smaller text
                   ),
                 ),
               ],
@@ -472,25 +749,29 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           child: Icon(
             isIncome ? Icons.arrow_downward : Icons.arrow_upward,
             color: color,
-            size: 20,
+            size: 18, // Reduced from 20
           ),
         ),
         title: Text(
           transaction.description,
-          style: const TextStyle(fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 14, // Smaller title
+          ),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '${transaction.category} • ${DateFormat('MMM dd, yyyy').format(transaction.date)}',
+              style: const TextStyle(fontSize: 12), // Smaller subtitle
             ),
             if (transaction.isRecurring)
               Text(
                 'Recurring ${transaction.recurringFrequency}',
                 style: TextStyle(
                   color: Colors.orange[700],
-                  fontSize: 12,
+                  fontSize: 11, // Reduced from 12
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -505,7 +786,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               style: TextStyle(
                 color: color,
                 fontWeight: FontWeight.bold,
-                fontSize: 16,
+                fontSize: 14, // Reduced from 16
               ),
             ),
             if (transaction.virtualBankId != null)
@@ -513,7 +794,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 'Virtual Bank',
                 style: TextStyle(
                   color: Colors.blue[600],
-                  fontSize: 10,
+                  fontSize: 9, // Reduced from 10
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -539,7 +820,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
                 child: Icon(
                   Icons.receipt_long_outlined,
-                  size: 48,
+                  size: 40, // Reduced from 48
                   color: Theme.of(context).colorScheme.primary,
                 ),
               ),
@@ -548,6 +829,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 'No Transactions Found',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
+                  fontSize: 16, // Smaller title
                 ),
               ),
               const SizedBox(height: 8),
@@ -556,6 +838,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Colors.grey[600],
+                  fontSize: 12, // Smaller text
                 ),
               ),
             ],
@@ -595,6 +878,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
       // Filter by amount
       if (t.amount < _minAmount || t.amount > _maxAmount) return false;
+
+      // Filter by search query
+      if (_searchQuery.isNotEmpty && !t.description.toLowerCase().contains(_searchQuery.toLowerCase())) return false;
 
       return true;
     }).toList();
@@ -699,7 +985,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 child: Icon(
                   isIncome ? Icons.arrow_downward : Icons.arrow_upward,
                   color: color,
-                  size: 24,
+                  size: 20, // Reduced from 24
                 ),
               ),
               const SizedBox(width: 16),
@@ -711,6 +997,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       transaction.description,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
+                        fontSize: 18, // Smaller title
                       ),
                     ),
                     Text(
@@ -718,7 +1005,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.bold,
-                        fontSize: 18,
+                        fontSize: 16, // Reduced from 18
                       ),
                     ),
                   ],
@@ -743,7 +1030,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Close'),
+                  child: const Text('Close', style: TextStyle(fontSize: 14)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -753,7 +1040,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     Navigator.pop(context);
                     // TODO: Navigate to edit transaction
                   },
-                  child: const Text('Edit'),
+                  child: const Text('Edit', style: TextStyle(fontSize: 14)),
                 ),
               ),
             ],
@@ -776,13 +1063,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: Colors.grey[600],
+                fontSize: 13, // Smaller text
               ),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 13, // Smaller text
+              ),
             ),
           ),
         ],

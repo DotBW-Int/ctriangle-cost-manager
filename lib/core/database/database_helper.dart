@@ -642,105 +642,15 @@ class DatabaseHelper {
     db.close();
   }
 
-  // Development helper methods
-  Future<void> addSampleData() async {
-    print('DatabaseHelper: Adding sample data for testing...');
-    
-    try {
-      // Add sample transactions
-      final sampleTransactions = [
-        models.Transaction(
-          id: 1,
-          type: 'income',
-          amount: 5000.0,
-          category: 'Salary',
-          description: 'Monthly Salary',
-          date: DateTime.now().subtract(const Duration(days: 5)),
-          isRecurring: true,
-          recurringFrequency: 'monthly',
-          nextDueDate: DateTime.now().add(const Duration(days: 25)),
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-        models.Transaction(
-          id: 2,
-          type: 'expense',
-          amount: 1200.0,
-          category: 'Food',
-          description: 'Grocery Shopping',
-          date: DateTime.now().subtract(const Duration(days: 2)),
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-        models.Transaction(
-          id: 3,
-          type: 'expense',
-          amount: 800.0,
-          category: 'Transportation',
-          description: 'Monthly Bus Pass',
-          date: DateTime.now().subtract(const Duration(days: 1)),
-          isRecurring: true,
-          recurringFrequency: 'monthly',
-          nextDueDate: DateTime.now().add(const Duration(days: 29)),
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-        models.Transaction(
-          id: 4,
-          type: 'income',
-          amount: 2000.0,
-          category: 'Freelance',
-          description: 'Web Development Project',
-          date: DateTime.now().subtract(const Duration(days: 3)),
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-      ];
-
-      for (var transaction in sampleTransactions) {
-        await insertTransaction(transaction);
-      }
-
-      // Add sample virtual bank
-      final sampleBank = models.VirtualBank(
-        id: 'vacation_fund',
-        name: 'Vacation Fund',
-        balance: 15000.0,
-        targetAmount: 50000.0,
-        targetDate: DateTime.now().add(const Duration(days: 180)), // 6 months target
-        color: '#4CAF50',
-        icon: 'flight_takeoff',
-        description: 'Saving for trip to Europe',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-
-      await insertVirtualBank(sampleBank);
-
-      print('DatabaseHelper: Sample data added successfully');
-    } catch (e) {
-      print('DatabaseHelper: ERROR adding sample data: $e');
-    }
-  }
-
+  // Development helper methods - REMOVED FOR PRODUCTION
+  // Users should get a clean app experience on first use
+  
+  // Method to clear all data if needed (for development/testing)
   Future<void> clearAllData() async {
-    print('DatabaseHelper: Clearing all data...');
-    
-    try {
-      final db = await database;
-      
-      await db.delete('transactions');
-      await db.delete('virtual_banks');
-      await db.delete('budgets');
-      await db.delete('emis');
-      
-      print('DatabaseHelper: All data cleared successfully');
-    } catch (e) {
-      print('DatabaseHelper: ERROR clearing data: $e');
-    }
+    final db = await database;
+    await db.delete('transactions');
+    await db.delete('virtual_banks');
+    await db.delete('budgets');
+    await db.delete('emis');
   }
 }

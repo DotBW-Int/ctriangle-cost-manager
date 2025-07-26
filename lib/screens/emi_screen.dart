@@ -4,6 +4,24 @@ import 'package:intl/intl.dart';
 import '../core/providers/finance_provider.dart';
 import '../core/models/models.dart';
 import '../core/widgets/create_emi_dialog.dart';
+import '../core/widgets/ct_app_bar.dart';
+
+enum EMISortBy {
+  name,
+  monthlyAmount,
+  remainingAmount,
+  progress,
+  dueDate,
+  interestRate,
+}
+
+enum EMIFilter {
+  all,
+  active,
+  completed,
+  overdue,
+  upcomingSoon,
+}
 
 class EMIScreen extends StatefulWidget {
   const EMIScreen({super.key});
@@ -13,8 +31,20 @@ class EMIScreen extends StatefulWidget {
 }
 
 class _EMIScreenState extends State<EMIScreen> {
+  final TextEditingController _searchController = TextEditingController();
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '₹', decimalDigits: 0);
   final DateFormat _dateFormat = DateFormat('MMM dd, yyyy');
+  
+  EMISortBy _sortBy = EMISortBy.dueDate;
+  bool _isAscending = true;
+  EMIFilter _filter = EMIFilter.all;
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -77,6 +107,58 @@ class _EMIScreenState extends State<EMIScreen> {
           final emis = financeProvider.emis;
           final emiInsights = financeProvider.getEMIInsights();
 
+          // Apply filter
+          List<EMI> filteredEmis;
+          switch (_filter) {
+            case EMIFilter.active:
+              filteredEmis = emis.where((emi) => !emi.isCompleted).toList();
+              break;
+            case EMIFilter.completed:
+              filteredEmis = emis.where((emi) => emi.isCompleted).toList();
+              break;
+            case EMIFilter.overdue:
+              filteredEmis = emis.where((emi) => emi.nextDueDate!.isBefore(DateTime.now()) && !emi.isCompleted).toList();
+              break;
+            case EMIFilter.upcomingSoon:
+              filteredEmis = emis.where((emi) => emi.nextDueDate!.isAfter(DateTime.now().subtract(const Duration(days: 1))) && !emi.isCompleted).toList();
+              break;
+            case EMIFilter.all:
+            default:
+              filteredEmis = emis;
+              break;
+          }
+
+          // Apply search
+          if (_searchQuery.isNotEmpty) {
+            filteredEmis = filteredEmis.where((emi) => emi.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+          }
+
+          // Sort
+          filteredEmis.sort((a, b) {
+            int comparison;
+            switch (_sortBy) {
+              case EMISortBy.name:
+                comparison = a.name.compareTo(b.name);
+                break;
+              case EMISortBy.monthlyAmount:
+                comparison = a.monthlyEMI.compareTo(b.monthlyEMI);
+                break;
+              case EMISortBy.remainingAmount:
+                comparison = a.remainingAmount.compareTo(b.remainingAmount);
+                break;
+              case EMISortBy.progress:
+                comparison = a.progressPercentage.compareTo(b.progressPercentage);
+                break;
+              case EMISortBy.dueDate:
+                comparison = a.nextDueDate!.compareTo(b.nextDueDate!);
+                break;
+              case EMISortBy.interestRate:
+                comparison = a.interestRate.compareTo(b.interestRate);
+                break;
+            }
+            return _isAscending ? comparison : -comparison;
+          });
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -88,11 +170,130 @@ class _EMIScreenState extends State<EMIScreen> {
                   _buildUpcomingPayments(emiInsights['upcomingPayments']),
                   const SizedBox(height: 24),
                 ],
-                _buildEMIList(emis),
+                _buildFilterAndSearch(),
+                const SizedBox(height: 16),
+                _buildSortOptions(),
+                const SizedBox(height: 24),
+                _buildEMIList(filteredEmis),
               ],
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildFilterAndSearch() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Filter & Search',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<EMIFilter>(
+                    value: _filter,
+                    decoration: const InputDecoration(
+                      labelText: 'Filter',
+                      prefixIcon: Icon(Icons.filter_list),
+                    ),
+                    items: EMIFilter.values.map((filter) {
+                      return DropdownMenuItem<EMIFilter>(
+                        value: filter,
+                        child: Text(filter.toString().split('.').last.toUpperCase()),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _filter = value!;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      labelText: 'Search EMI',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSortOptions() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Sort Options',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<EMISortBy>(
+                    value: _sortBy,
+                    decoration: const InputDecoration(
+                      labelText: 'Sort By',
+                      prefixIcon: Icon(Icons.sort),
+                    ),
+                    items: EMISortBy.values.map((sortBy) {
+                      return DropdownMenuItem<EMISortBy>(
+                        value: sortBy,
+                        child: Text(sortBy.toString().split('.').last.toUpperCase()),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _sortBy = value!;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: SwitchListTile(
+                    title: const Text('Ascending'),
+                    value: _isAscending,
+                    onChanged: (value) {
+                      setState(() {
+                        _isAscending = value;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

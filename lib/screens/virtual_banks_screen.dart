@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../core/providers/finance_provider.dart';
 import '../core/models/models.dart';
 import '../core/widgets/create_virtual_bank_dialog.dart';
+import '../core/widgets/ct_app_bar.dart';
 import '../core/theme/app_theme.dart';
 
 enum VirtualBankSortBy {
@@ -87,22 +88,22 @@ class _VirtualBanksScreenState extends State<VirtualBanksScreen> {
           final allVirtualBanks = financeProvider.virtualBanks;
           final filteredAndSortedBanks = _getFilteredAndSortedBanks(allVirtualBanks);
           
-          if (allVirtualBanks.isEmpty) {
-            return _buildEmptyState(context);
-          }
-
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Always show overview - even when no banks exist
                 _buildEnhancedOverviewCard(allVirtualBanks, currencyFormat, context),
                 const SizedBox(height: 24),
-                _buildSearchAndSort(),
-                const SizedBox(height: 16),
-                _buildActiveFiltersChips(),
-                const SizedBox(height: 16),
-                _buildBanksList(filteredAndSortedBanks, currencyFormat, context),
+                if (allVirtualBanks.isNotEmpty) ...[
+                  _buildSearchAndSort(),
+                  const SizedBox(height: 16),
+                  _buildActiveFiltersChips(),
+                  const SizedBox(height: 16),
+                  _buildBanksList(filteredAndSortedBanks, currencyFormat, context),
+                ] else
+                  _buildEmptyStateAction(context),
               ],
             ),
           );
@@ -476,20 +477,99 @@ class _VirtualBanksScreenState extends State<VirtualBanksScreen> {
   }
 
   Widget _buildEnhancedOverviewCard(List<VirtualBank> banks, NumberFormat currencyFormat, BuildContext context) {
+    // Show overview even when no banks exist, with encouraging messaging
+    if (banks.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.account_balance,
+                    color: Theme.of(context).primaryColor,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Virtual Banks Overview',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.blue.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.lightbulb_outline,
+                      color: Colors.blue,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Start Your Savings Journey',
+                            style: TextStyle(
+                              color: Colors.blue[700],
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Create virtual banks to organize your savings goals. Track progress, set target dates, and automate your savings!',
+                            style: TextStyle(
+                              color: Colors.blue[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final totalBalance = banks.fold(0.0, (sum, bank) => sum + bank.balance);
     final totalTarget = banks.fold(0.0, (sum, bank) => sum + bank.targetAmount);
     final completedBanks = banks.where((bank) => bank.progressPercentage >= 1.0).length;
     final activeBanks = banks.where((bank) => bank.progressPercentage < 1.0).length;
     final totalProgressPercentage = totalTarget > 0 ? (totalBalance / totalTarget * 100) : 0.0;
     
-    // Calculate monthly requirements - simplified version without auto-save
+    // Calculate monthly requirements and current month pending
     final totalMonthlyRequired = banks.fold(0.0, (sum, bank) => sum + _getMonthlyRequired(bank));
+    final currentMonthPending = _calculateCurrentMonthPending(banks);
+    final totalCurrentMonthRequired = _calculateCurrentMonthRequired(banks);
     
     // Status categories
     final nearCompletionBanks = banks.where((bank) => bank.progressPercentage >= 0.8 && bank.progressPercentage < 1.0).length;
     final overdueBanks = banks.where((bank) => _getMonthsRemaining(bank) < 0 && bank.progressPercentage < 1.0).length;
     final onTrackBanks = banks.where((bank) => 
         bank.progressPercentage < 0.8 && _getMonthsRemaining(bank) >= 0).length;
+    
+    // Remaining amount to target
+    final remainingToTarget = totalTarget - totalBalance;
     
     return Card(
       child: Padding(
@@ -515,7 +595,7 @@ class _VirtualBanksScreenState extends State<VirtualBanksScreen> {
             ),
             const SizedBox(height: 20),
             
-            // Primary metrics row - similar to EMI screen
+            // Primary metrics row - Monthly Required & Total Banks
             Row(
               children: [
                 Expanded(
@@ -529,9 +609,9 @@ class _VirtualBanksScreenState extends State<VirtualBanksScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildOverviewItem(
-                    'Total Banks',
-                    '${banks.length}',
-                    Icons.account_balance,
+                    'Active Banks',
+                    '$activeBanks',
+                    Icons.account_balance_wallet,
                     Colors.blue,
                   ),
                 ),
@@ -539,7 +619,31 @@ class _VirtualBanksScreenState extends State<VirtualBanksScreen> {
             ),
             const SizedBox(height: 12),
             
-            // Progress and completion row
+            // Current month status - Pending vs Required
+            Row(
+              children: [
+                Expanded(
+                  child: _buildOverviewItem(
+                    'This Month Pending',
+                    currencyFormat.format(currentMonthPending),
+                    Icons.schedule,
+                    currentMonthPending > 0 ? Colors.red : Colors.green,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildOverviewItem(
+                    'This Month Target',
+                    currencyFormat.format(totalCurrentMonthRequired),
+                    Icons.flag,
+                    Colors.purple,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            
+            // Total amounts - Saved vs Remaining
             Row(
               children: [
                 Expanded(
@@ -553,18 +657,17 @@ class _VirtualBanksScreenState extends State<VirtualBanksScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildOverviewItem(
-                    'Overall Progress',
-                    '${totalProgressPercentage.toStringAsFixed(1)}%',
-                    Icons.trending_up,
-                    totalProgressPercentage >= 100 ? Colors.green : 
-                    totalProgressPercentage >= 80 ? Colors.orange : Colors.red,
+                    'Remaining',
+                    currencyFormat.format(remainingToTarget),
+                    Icons.trending_down,
+                    Colors.red,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
             
-            // Status breakdown row - show distribution
+            // Status breakdown - Completed vs On Track
             Row(
               children: [
                 Expanded(
@@ -578,143 +681,140 @@ class _VirtualBanksScreenState extends State<VirtualBanksScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildOverviewItem(
-                    'Active',
-                    '$activeBanks',
-                    Icons.play_circle,
+                    'On Track',
+                    '$onTrackBanks',
+                    Icons.track_changes,
                     Colors.blue,
                   ),
                 ),
               ],
             ),
             
-            // Status breakdown row - show distribution
-            if (banks.isNotEmpty) ...[
+            // Warning statuses if any
+            if (nearCompletionBanks > 0 || overdueBanks > 0) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(
-                    child: _buildOverviewItem(
-                      'On Track',
-                      '$onTrackBanks',
-                      Icons.track_changes,
-                      Colors.blue,
+                  if (nearCompletionBanks > 0)
+                    Expanded(
+                      child: _buildOverviewItem(
+                        'Near Goal',
+                        '$nearCompletionBanks',
+                        Icons.flag,
+                        Colors.amber,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildOverviewItem(
-                      'Near Goal',
-                      '$nearCompletionBanks',
-                      Icons.flag,
-                      Colors.amber,
+                  if (nearCompletionBanks > 0 && overdueBanks > 0)
+                    const SizedBox(width: 12),
+                  if (overdueBanks > 0)
+                    Expanded(
+                      child: _buildOverviewItem(
+                        'Overdue',
+                        '$overdueBanks',
+                        Icons.warning,
+                        Colors.red,
+                      ),
                     ),
-                  ),
+                  // Fill remaining space if only one warning type
+                  if ((nearCompletionBanks > 0) != (overdueBanks > 0))
+                    const Expanded(child: SizedBox()),
                 ],
               ),
             ],
             
-            // Warning row if there are issues
-            if (overdueBanks > 0) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildOverviewItem(
-                      'Overdue',
-                      '$overdueBanks',
-                      Icons.warning,
-                      Colors.red,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildOverviewItem(
-                      'Remaining',
-                      currencyFormat.format(totalTarget - totalBalance),
-                      Icons.trending_down,
-                      Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            
-            // Overall Progress Bar with better labeling
+            // Overall Progress Bar - similar to EMI screen
             if (totalTarget > 0) ...[
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Overall Savings Progress',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+                    'Overall Progress: ${currencyFormat.format(totalBalance)} / ${currencyFormat.format(totalTarget)}',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
                     ),
                   ),
                   Text(
-                    '${currencyFormat.format(totalBalance)} / ${currencyFormat.format(totalTarget)}',
+                    '${totalProgressPercentage.toStringAsFixed(1)}%',
                     style: TextStyle(
+                      color: totalProgressPercentage >= 100 ? Colors.green :
+                             totalProgressPercentage >= 80 ? Colors.orange : 
+                             Theme.of(context).primaryColor,
                       fontSize: 12,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              Container(
-                height: 8,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(4),
-                  color: Colors.grey[300],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: totalProgressPercentage / 100,
-                    backgroundColor: Colors.transparent,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      totalProgressPercentage >= 100 ? Colors.green : 
-                      totalProgressPercentage >= 80 ? Colors.orange : Theme.of(context).primaryColor,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${totalProgressPercentage.toStringAsFixed(1)}% of total savings goal achieved',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
+              LinearProgressIndicator(
+                value: totalProgressPercentage / 100,
+                backgroundColor: Colors.grey[300],
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  totalProgressPercentage >= 100 ? Colors.green : 
+                  totalProgressPercentage >= 80 ? Colors.orange : Theme.of(context).primaryColor,
                 ),
               ),
             ],
             
-            // Monthly requirement insight
-            if (totalMonthlyRequired > 0) ...[
+            // Current month insight - similar to EMI upcoming payments
+            if (currentMonthPending > 0) ...[
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  color: Colors.orange.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Colors.blue.withOpacity(0.3),
+                    color: Colors.orange.withOpacity(0.3),
                   ),
                 ),
                 child: Row(
                   children: [
                     Icon(
-                      Icons.info,
-                      color: Colors.blue,
+                      Icons.warning,
+                      color: Colors.orange,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'You need to save ${currencyFormat.format(totalMonthlyRequired)} per month to meet all your virtual banking goals on time.',
+                        'You still need to save ${currencyFormat.format(currentMonthPending)} this month to stay on track with your goals.',
                         style: TextStyle(
-                          color: Colors.blue[700],
+                          color: Colors.orange[700],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (totalCurrentMonthRequired > 0) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.green.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Great! You\'re on track with this month\'s savings targets.',
+                        style: TextStyle(
+                          color: Colors.green[700],
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
@@ -728,6 +828,46 @@ class _VirtualBanksScreenState extends State<VirtualBanksScreen> {
         ),
       ),
     );
+  }
+
+  // Helper method to calculate current month pending amount
+  double _calculateCurrentMonthPending(List<VirtualBank> banks) {
+    final now = DateTime.now();
+    double pending = 0.0;
+    
+    for (var bank in banks) {
+      if (bank.progressPercentage >= 1.0) continue; // Skip completed banks
+      
+      final monthlyRequired = _getMonthlyRequired(bank);
+      final monthsRemaining = _getMonthsRemaining(bank);
+      
+      // If overdue or due this month, add to pending
+      if (monthsRemaining <= 0) {
+        pending += monthlyRequired;
+      }
+    }
+    
+    return pending;
+  }
+
+  // Helper method to calculate current month required amount
+  double _calculateCurrentMonthRequired(List<VirtualBank> banks) {
+    final now = DateTime.now();
+    double required = 0.0;
+    
+    for (var bank in banks) {
+      if (bank.progressPercentage >= 1.0) continue; // Skip completed banks
+      
+      final monthlyRequired = _getMonthlyRequired(bank);
+      final monthsRemaining = _getMonthsRemaining(bank);
+      
+      // If not overdue, this month's requirement
+      if (monthsRemaining >= 0) {
+        required += monthlyRequired;
+      }
+    }
+    
+    return required;
   }
 
   Widget _buildOverviewItem(String title, String value, IconData icon, Color color) {
@@ -879,6 +1019,58 @@ class _VirtualBanksScreenState extends State<VirtualBanksScreen> {
                 color: Colors.grey[500],
               ),
               textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyStateAction(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.account_balance,
+              size: 64,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No Virtual Banks Found',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'It looks like you haven\'t created any virtual banks yet.',
+              style: TextStyle(
+                color: Colors.grey[500],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => _showCreateVirtualBankDialog(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Create Your First Virtual Bank'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+                textStyle: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
             ),
           ],
         ),
