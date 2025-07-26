@@ -908,11 +908,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   bool _isIncomeCategory(String category) {
-    const incomeCategories = [
-      'Salary', 'Freelance', 'Business', 'Investments', 'Rental Income',
-      'Dividends', 'Interest', 'Bonus', 'Tax Refund', 'Gifts', 'Other Income'
-    ];
-    return incomeCategories.contains(category);
+    // Use the dynamic income categories from FinanceProvider instead of hardcoded list
+    return FinanceProvider.incomeCategories.contains(category);
   }
 
   String _getSortDescription() {

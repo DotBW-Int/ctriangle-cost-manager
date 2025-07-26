@@ -1286,10 +1286,8 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet> {
 
       await financeProvider.addTransaction(transaction);
 
-      // If paying from virtual bank, deduct the amount
-      if (_selectedVirtualBankId != null && _selectedType == 'expense') {
-        await financeProvider.withdrawFromVirtualBank(_selectedVirtualBankId!, amount);
-      }
+      // Don't automatically deduct from virtual bank for income transactions
+      // Virtual bank deduction should only happen for expense transactions, which is now handled in addTransaction method
 
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(

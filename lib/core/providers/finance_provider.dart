@@ -116,11 +116,14 @@ class FinanceProvider extends ChangeNotifier {
     await _databaseHelper.insertTransaction(transaction);
     await loadTransactions();
     
-    // Update virtual bank balance if applicable
-    if (transaction.virtualBankId != null) {
-      await _updateVirtualBankBalance(transaction.virtualBankId!, transaction.amount, transaction.type);
+    // Only update virtual bank balance for expense transactions from virtual banks
+    // Income transactions should not automatically affect virtual bank balances
+    if (transaction.virtualBankId != null && transaction.type == 'expense') {
+      await withdrawFromVirtualBank(transaction.virtualBankId!, transaction.amount);
     }
     
+    // Recalculate total balance after adding transaction
+    await calculateTotalBalance();
     notifyListeners();
   }
 
