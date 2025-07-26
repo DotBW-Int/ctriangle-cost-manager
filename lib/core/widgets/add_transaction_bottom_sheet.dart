@@ -60,10 +60,12 @@ class IndianCurrencyFormatter extends TextInputFormatter {
 
 class AddTransactionBottomSheet extends StatefulWidget {
   final String? initialType;
+  final Transaction? editTransaction; // Add this parameter for editing
 
   const AddTransactionBottomSheet({
     super.key,
     this.initialType,
+    this.editTransaction, // Add this parameter
   });
 
   @override
@@ -99,10 +101,34 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet> {
   @override
   void initState() {
     super.initState();
-    _selectedType = widget.initialType ?? 'expense';
-    // Remove default category - let user select
-    _selectedCategory = '';
+    
+    // Check if we're editing an existing transaction
+    if (widget.editTransaction != null) {
+      _populateFieldsForEdit();
+    } else {
+      _selectedType = widget.initialType ?? 'expense';
+      _selectedCategory = '';
+      _dateController.text = DateFormat('MMM dd, yyyy').format(_selectedDate);
+    }
+  }
+
+  void _populateFieldsForEdit() {
+    final transaction = widget.editTransaction!;
+    
+    // Populate form fields with existing transaction data
+    _selectedType = transaction.type == 'recurring' ? 
+        (FinanceProvider.incomeCategories.contains(transaction.category) ? 'income' : 'expense') : 
+        transaction.type;
+    _amountController.text = transaction.amount.toString();
+    _selectedCategory = transaction.category;
+    _descriptionController.text = transaction.description;
+    _selectedDate = transaction.date;
     _dateController.text = DateFormat('MMM dd, yyyy').format(_selectedDate);
+    _receiptPath = transaction.receiptPath;
+    _selectedVirtualBankId = transaction.virtualBankId;
+    _isRecurring = transaction.isRecurring;
+    _recurringFrequency = transaction.recurringFrequency ?? 'monthly';
+    // Note: We don't populate recurring end date as it's not stored in the model
   }
 
   @override
@@ -276,6 +302,8 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet> {
   }
 
   Widget _buildEnhancedHeader() {
+    final isEditing = widget.editTransaction != null;
+    
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       decoration: BoxDecoration(
@@ -286,7 +314,7 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            'Add Transaction',
+            isEditing ? 'Edit Transaction' : 'Add Transaction',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
             ),
@@ -456,44 +484,57 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet> {
   }
 
   Widget _buildCategorySelector() {
+    final categories = _getCurrentCategories();
+    
+    // Ensure we have a valid category selected
+    if (_selectedCategory.isEmpty && categories.isNotEmpty) {
+      _selectedCategory = categories.first;
+    }
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Category',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: _isDarkMode ? Colors.white : Colors.black87,
-          ),
+        Row(
+          children: [
+            Icon(
+              Icons.category,
+              color: Theme.of(context).primaryColor,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Category',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _isDarkMode ? Colors.grey[800] : Colors.grey[100],
+                  color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _isDarkMode ? Colors.grey[600]! : Colors.grey[300]!,
-                  ),
+                  border: Border.all(color: Theme.of(context).dividerColor),
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
-                    value: _selectedCategory,
+                    value: categories.contains(_selectedCategory) ? _selectedCategory : categories.first,
                     isExpanded: true,
                     icon: Icon(
                       Icons.keyboard_arrow_down,
-                      color: _isDarkMode ? Colors.white70 : Colors.black54,
+                      color: Theme.of(context).iconTheme.color,
                     ),
                     style: TextStyle(
-                      color: _isDarkMode ? Colors.white : Colors.black87,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
                       fontSize: 16,
                     ),
-                    dropdownColor: _isDarkMode ? Colors.grey[800] : Colors.white,
-                    items: _categories.map((category) {
+                    dropdownColor: Theme.of(context).cardColor,
+                    items: categories.map((category) {
                       return DropdownMenuItem<String>(
                         value: category,
                         child: Text(category),
@@ -1201,27 +1242,27 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet> {
 
   Widget _buildActionButton() {
     final isExpense = _selectedType == 'expense';
-    final buttonColor = isExpense ? Colors.red : Colors.green;
+    final isEditing = widget.editTransaction != null;
     
     return Container(
       width: double.infinity,
       height: 56,
       margin: const EdgeInsets.only(top: 24),
-      child: ElevatedButton(
+      child: AppTheme.dynamicGradientButton(
         onPressed: _saveTransaction,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: buttonColor,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-        child: Text(
-          'Add ${isExpense ? 'Expense' : 'Income'}',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+        transactionType: _selectedType, // This will switch between 'income' and 'expense'
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: Text(
+            isEditing 
+                ? 'Update ${isExpense ? 'Expense' : 'Income'}'
+                : 'Add ${isExpense ? 'Expense' : 'Income'}',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
           ),
         ),
       ),
@@ -1236,6 +1277,7 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet> {
     final cleanAmountText = _amountController.text.replaceAll(',', '');
     final amount = double.parse(cleanAmountText);
     final financeProvider = context.read<FinanceProvider>();
+    final isEditing = widget.editTransaction != null;
 
     // Enhanced validation for virtual bank
     if (_selectedVirtualBankId != null) {
@@ -1269,37 +1311,96 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet> {
         }
       }
 
-      final transaction = Transaction(
-        type: _isRecurring ? 'recurring' : _selectedType,
-        amount: amount,
-        category: _selectedCategory,
-        description: _descriptionController.text,
-        date: _selectedDate,
-        receiptPath: _receiptPath,
-        virtualBankId: _selectedVirtualBankId,
-        isRecurring: _isRecurring,
-        recurringFrequency: _isRecurring ? _recurringFrequency : null,
-        nextDueDate: nextDueDate,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
+      if (isEditing) {
+        // Update existing transaction
+        final originalTransaction = widget.editTransaction!;
+        
+        // Create edit history entry
+        List<Map<String, dynamic>> editHistory = [];
+        if (originalTransaction.editHistory != null) {
+          editHistory = List<Map<String, dynamic>>.from(originalTransaction.editHistory!);
+        }
+        
+        // Track what changed
+        List<String> changes = [];
+        if (originalTransaction.amount != amount) {
+          changes.add('Amount changed from ₹${originalTransaction.amount} to ₹$amount');
+        }
+        if (originalTransaction.category != _selectedCategory) {
+          changes.add('Category changed from "${originalTransaction.category}" to "$_selectedCategory"');
+        }
+        if (originalTransaction.description != _descriptionController.text) {
+          changes.add('Description changed');
+        }
+        if (originalTransaction.date != _selectedDate) {
+          changes.add('Date changed from ${DateFormat('MMM dd, yyyy').format(originalTransaction.date)} to ${DateFormat('MMM dd, yyyy').format(_selectedDate)}');
+        }
+        if (originalTransaction.type != (_isRecurring ? 'recurring' : _selectedType)) {
+          changes.add('Type changed');
+        }
+        
+        if (changes.isNotEmpty) {
+          editHistory.add({
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+            'changes': changes,
+          });
+        }
 
-      await financeProvider.addTransaction(transaction);
+        final updatedTransaction = originalTransaction.copyWith(
+          type: _isRecurring ? 'recurring' : _selectedType,
+          amount: amount,
+          category: _selectedCategory,
+          description: _descriptionController.text,
+          date: _selectedDate,
+          receiptPath: _receiptPath,
+          virtualBankId: _selectedVirtualBankId,
+          isRecurring: _isRecurring,
+          recurringFrequency: _isRecurring ? _recurringFrequency : null,
+          nextDueDate: nextDueDate,
+          editHistory: editHistory.isNotEmpty ? editHistory : null,
+          updatedAt: DateTime.now(),
+        );
 
-      // Don't automatically deduct from virtual bank for income transactions
-      // Virtual bank deduction should only happen for expense transactions, which is now handled in addTransaction method
+        await financeProvider.updateTransaction(updatedTransaction);
+        
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Transaction updated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        // Create new transaction
+        final transaction = Transaction(
+          type: _isRecurring ? 'recurring' : _selectedType,
+          amount: amount,
+          category: _selectedCategory,
+          description: _descriptionController.text,
+          date: _selectedDate,
+          receiptPath: _receiptPath,
+          virtualBankId: _selectedVirtualBankId,
+          isRecurring: _isRecurring,
+          recurringFrequency: _isRecurring ? _recurringFrequency : null,
+          nextDueDate: nextDueDate,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
 
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${_selectedType == 'expense' ? 'Expense' : 'Income'} added successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+        await financeProvider.addTransaction(transaction);
+
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_selectedType == 'expense' ? 'Expense' : 'Income'} added successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error adding transaction: $e'),
+          content: Text('Error ${isEditing ? 'updating' : 'adding'} transaction: $e'),
           backgroundColor: Colors.red,
         ),
       );

@@ -1,22 +1,134 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Brand Colors
-  static const Color primaryBlue = Color(0xFF3B82F6);
-  static const Color darkBlue = Color(0xFF1E40AF);
-  static const Color lightBlue = Color(0xFF60A5FA);
+  // CTriangle brand colors and gradient
+  static const Color primaryBlue = Color(0xFF3b82f6);
+  static const Color lightBlue = Color(0xFF60a5fa);
+  static const Color darkBlue = Color(0xFF1e40af);
   
-  // Gradient Colors
-  static const LinearGradient primaryGradient = LinearGradient(
+  // CTriangle gradient (also expose as primaryGradient for compatibility)
+  static const LinearGradient ctriangleGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF1E40AF), // #1e40af
-      Color(0xFF3B82F6), // #3b82f6
-      Color(0xFF60A5FA), // #60a5fa
+      Color(0xFF1e40af), // darkBlue
+      Color(0xFF3b82f6), // primaryBlue
+      Color(0xFF60a5fa), // lightBlue
     ],
     stops: [0.0, 0.5, 1.0],
   );
+  
+  // Income gradient (green variant)
+  static const LinearGradient incomeGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF166534), // dark green
+      Color(0xFF16a34a), // green
+      Color(0xFF4ade80), // light green
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+  
+  // Expense gradient (red variant)
+  static const LinearGradient expenseGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF991b1b), // dark red
+      Color(0xFFdc2626), // red
+      Color(0xFFf87171), // light red
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+  
+  // Alias for compatibility
+  static const LinearGradient primaryGradient = ctriangleGradient;
+
+  // Helper method to create gradient button style
+  static ButtonStyle gradientButtonStyle({
+    Color? overlayColor,
+    EdgeInsetsGeometry? padding,
+  }) {
+    return ElevatedButton.styleFrom(
+      backgroundColor: Colors.transparent,
+      shadowColor: Colors.transparent,
+      padding: padding ?? const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+    );
+  }
+
+  // Helper method to create gradient container
+  static Widget gradientButton({
+    required Widget child,
+    required VoidCallback? onPressed,
+    EdgeInsetsGeometry? padding,
+    BorderRadius? borderRadius,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: ctriangleGradient,
+        borderRadius: borderRadius ?? BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: primaryBlue.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: borderRadius ?? BorderRadius.circular(16),
+          child: Container(
+            padding: padding ?? const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Helper for gradient icon button
+  static Widget gradientIconButton({
+    required IconData icon,
+    required VoidCallback? onPressed,
+    double size = 24,
+    EdgeInsetsGeometry? padding,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: ctriangleGradient,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: primaryBlue.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: padding ?? const EdgeInsets.all(8),
+            child: Icon(
+              icon,
+              size: size,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   // Light Theme
   static ThemeData get lightTheme {
@@ -93,6 +205,58 @@ class AppTheme {
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         shape: CircleBorder(),
+      ),
+    );
+  }
+
+  // Helper method to create dynamic gradient container based on transaction type
+  static Widget dynamicGradientButton({
+    required Widget child,
+    required VoidCallback? onPressed,
+    required String transactionType, // 'income', 'expense', or 'default'
+    EdgeInsetsGeometry? padding,
+    BorderRadius? borderRadius,
+  }) {
+    LinearGradient gradient;
+    Color shadowColor;
+    
+    switch (transactionType) {
+      case 'income':
+        gradient = incomeGradient;
+        shadowColor = const Color(0xFF16a34a);
+        break;
+      case 'expense':
+        gradient = expenseGradient;
+        shadowColor = const Color(0xFFdc2626);
+        break;
+      default:
+        gradient = ctriangleGradient;
+        shadowColor = primaryBlue;
+        break;
+    }
+    
+    return Container(
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: borderRadius ?? BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: borderRadius ?? BorderRadius.circular(16),
+          child: Container(
+            padding: padding ?? const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: child,
+          ),
+        ),
       ),
     );
   }

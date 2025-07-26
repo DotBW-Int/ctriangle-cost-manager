@@ -61,10 +61,12 @@ class IndianCurrencyFormatter extends TextInputFormatter {
 }
 
 class AddTransactionBottomSheet extends StatefulWidget {
+  final Transaction? editTransaction; // Add support for editing existing transactions
   final String? initialType;
 
   const AddTransactionBottomSheet({
     super.key,
+    this.editTransaction,
     this.initialType,
   });
 
@@ -103,12 +105,24 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
   final ImagePicker _imagePicker = ImagePicker();
   late NumberFormat _currencyFormat;
   late String _currencySymbol;
+  bool _isEditing = false;
+  Transaction? _originalTransaction;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedType = widget.initialType ?? 'expense';
-    _selectedCategory = '';
+    
+    // Check if we're editing an existing transaction
+    if (widget.editTransaction != null) {
+      _isEditing = true;
+      _originalTransaction = widget.editTransaction;
+      _loadTransactionData(widget.editTransaction!);
+    } else {
+      _selectedType = widget.initialType ?? 'expense';
+      _selectedCategory = '';
+    }
+    
     _dateController.text = DateFormat('MMM dd, yyyy').format(_selectedDate);
     
     // Initialize animations
@@ -253,6 +267,19 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
     return _selectedType == 'expense' 
         ? FinanceProvider.expenseCategories 
         : FinanceProvider.incomeCategories;
+  }
+
+  void _loadTransactionData(Transaction transaction) {
+    _selectedType = transaction.type;
+    _amountController.text = transaction.amount.toString();
+    _selectedCategory = transaction.category;
+    _descriptionController.text = transaction.description;
+    _selectedDate = transaction.date;
+    _receiptPath = transaction.receiptPath;
+    _selectedVirtualBankId = transaction.virtualBankId;
+    _isRecurring = transaction.isRecurring;
+    _recurringFrequency = transaction.recurringFrequency ?? 'monthly';
+    _recurringEndDate = transaction.nextDueDate;
   }
 
   @override
@@ -592,7 +619,7 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    gradient: _transactionType == TransactionType.income
+                    gradient: _selectedType == 'income'
                         ? LinearGradient(
                             colors: [Colors.green.shade600, Colors.green.shade400],
                             begin: Alignment.topLeft,
@@ -606,14 +633,14 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: (_transactionType == TransactionType.income ? Colors.green : Colors.red).withOpacity(0.3),
+                        color: (_selectedType == 'income' ? Colors.green : Colors.red).withOpacity(0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
                     ],
                   ),
                   child: Icon(
-                    _transactionType == TransactionType.income 
+                    _selectedType == 'income' 
                         ? Icons.trending_up_rounded 
                         : Icons.trending_down_rounded,
                     color: Colors.white,
@@ -636,7 +663,7 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Enter the ${_transactionType == TransactionType.income ? "income" : "expense"} amount',
+                        'Enter the ${_selectedType == 'income' ? "income" : "expense"} amount',
                         style: TextStyle(
                           fontSize: 13,
                           color: Theme.of(context).textTheme.bodySmall?.color,
@@ -651,8 +678,8 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          (_transactionType == TransactionType.income ? Colors.green : Colors.red).withOpacity(0.2),
-                          (_transactionType == TransactionType.income ? Colors.green : Colors.red).withOpacity(0.1),
+                          (_selectedType == 'income' ? Colors.green : Colors.red).withOpacity(0.2),
+                          (_selectedType == 'income' ? Colors.green : Colors.red).withOpacity(0.1),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(12),
@@ -662,7 +689,7 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: _transactionType == TransactionType.income ? Colors.green : Colors.red,
+                        color: _selectedType == 'income' ? Colors.green : Colors.red,
                       ),
                     ),
                   ),
@@ -678,7 +705,7 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: _amountController.text.isNotEmpty 
-                    ? (_transactionType == TransactionType.income ? Colors.green : Colors.red).withOpacity(0.5)
+                    ? (_selectedType == 'income' ? Colors.green : Colors.red).withOpacity(0.5)
                     : Theme.of(context).dividerColor.withOpacity(0.6),
                 width: 2,
               ),
@@ -697,7 +724,7 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: _amountController.text.isNotEmpty 
-                    ? (_transactionType == TransactionType.income ? Colors.green : Colors.red)
+                    ? (_selectedType == 'income' ? Colors.green : Colors.red)
                     : Theme.of(context).textTheme.bodyLarge?.color,
                 letterSpacing: 0.5,
               ),
@@ -714,8 +741,8 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        (_transactionType == TransactionType.income ? Colors.green : Colors.red).withOpacity(0.2),
-                        (_transactionType == TransactionType.income ? Colors.green : Colors.red).withOpacity(0.1),
+                        (_selectedType == 'income' ? Colors.green : Colors.red).withOpacity(0.2),
+                        (_selectedType == 'income' ? Colors.green : Colors.red).withOpacity(0.1),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(12),
@@ -725,7 +752,7 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: _transactionType == TransactionType.income ? Colors.green : Colors.red,
+                      color: _selectedType == 'income' ? Colors.green : Colors.red,
                     ),
                   ),
                 ),
@@ -853,3 +880,513 @@ class _AddTransactionBottomSheetState extends State<AddTransactionBottomSheet>
       ),
     );
   }
+
+  Future<void> _saveTransaction() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    try {
+      setState(() => _isLoading = true);
+
+      final financeProvider = context.read<FinanceProvider>();
+      final amount = double.parse(_amountController.text.replaceAll(',', ''));
+      
+      DateTime? nextDueDate;
+      if (_isRecurring) {
+        switch (_recurringFrequency) {
+          case 'weekly':
+            nextDueDate = _selectedDate.add(const Duration(days: 7));
+            break;
+          case 'monthly':
+            nextDueDate = DateTime(_selectedDate.year, _selectedDate.month + 1, _selectedDate.day);
+            break;
+          case 'yearly':
+            nextDueDate = DateTime(_selectedDate.year + 1, _selectedDate.month, _selectedDate.day);
+            break;
+        }
+      }
+
+      if (_isEditing && _originalTransaction != null) {
+        // Update existing transaction
+        final updatedTransaction = _originalTransaction!.copyWith(
+          type: _selectedType,
+          amount: amount,
+          category: _selectedCategory,
+          description: _descriptionController.text,
+          date: _selectedDate,
+          receiptPath: _receiptPath,
+          virtualBankId: _selectedVirtualBankId,
+          isRecurring: _isRecurring,
+          recurringFrequency: _isRecurring ? _recurringFrequency : null,
+          nextDueDate: nextDueDate,
+          updatedAt: DateTime.now(),
+          editHistory: [
+            ...(_originalTransaction!.editHistory ?? []),
+            {
+              'timestamp': DateTime.now(),
+              'description': 'Amount changed from ${_currencyFormat.format(_originalTransaction!.amount)} to ${_currencyFormat.format(amount)}',
+              'oldAmount': _originalTransaction!.amount,
+              'newAmount': amount,
+            }
+          ],
+        );
+
+        await financeProvider.updateTransaction(updatedTransaction);
+        
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Transaction updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        // Create new transaction
+        final transaction = Transaction(
+          type: _isRecurring ? 'recurring' : _selectedType,
+          amount: amount,
+          category: _selectedCategory,
+          description: _descriptionController.text,
+          date: _selectedDate,
+          receiptPath: _receiptPath,
+          virtualBankId: _selectedVirtualBankId,
+          isRecurring: _isRecurring,
+          recurringFrequency: _isRecurring ? _recurringFrequency : null,
+          nextDueDate: nextDueDate,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
+        await financeProvider.addTransaction(transaction);
+
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${_selectedType == 'expense' ? 'Expense' : 'Income'} added successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving transaction: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // Add missing build methods for other form fields
+  Widget _buildEnhancedCategoryField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'Category',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.titleMedium?.color,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: DropdownButtonFormField<String>(
+              value: _selectedCategory.isNotEmpty ? _selectedCategory : null,
+              decoration: InputDecoration(
+                hintText: 'Select category',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              items: _getCurrentCategories().map((category) {
+                return DropdownMenuItem(value: category, child: Text(category));
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedCategory = value ?? '';
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please select a category';
+                }
+                return null;
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnhancedDescriptionField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'Description',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.titleMedium?.color,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: TextFormField(
+              controller: _descriptionController,
+              decoration: InputDecoration(
+                hintText: 'Enter description',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter a description';
+                }
+                return null;
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnhancedDatePicker() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'Date',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.titleMedium?.color,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: TextFormField(
+              controller: _dateController,
+              readOnly: true,
+              decoration: InputDecoration(
+                hintText: 'Select date',
+                suffixIcon: const Icon(Icons.calendar_today),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              onTap: () async {
+                final date = await showDatePicker(
+                  context: context,
+                  initialDate: _selectedDate,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now(),
+                );
+                if (date != null) {
+                  setState(() {
+                    _selectedDate = date;
+                    _dateController.text = DateFormat('MMM dd, yyyy').format(date);
+                  });
+                }
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnhancedReceiptSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Receipt (Optional)',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.titleMedium?.color,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_receiptPath != null)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.receipt),
+                  title: const Text('Receipt attached'),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: () => setState(() => _receiptPath = null),
+                  ),
+                ),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickReceipt(ImageSource.camera),
+                      icon: const Icon(Icons.camera_alt),
+                      label: const Text('Camera'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickReceipt(ImageSource.gallery),
+                      icon: const Icon(Icons.photo_library),
+                      label: const Text('Gallery'),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnhancedVirtualBankSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Virtual Bank (Optional)',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.titleMedium?.color,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Consumer<FinanceProvider>(
+              builder: (context, financeProvider, child) {
+                final virtualBanks = financeProvider.virtualBanks;
+                return DropdownButtonFormField<String>(
+                  value: _selectedVirtualBankId,
+                  decoration: InputDecoration(
+                    hintText: 'Select virtual bank',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('None')),
+                    ...virtualBanks.map((bank) {
+                      return DropdownMenuItem(value: bank.id, child: Text(bank.name));
+                    }),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedVirtualBankId = value;
+                    });
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnhancedRecurringSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Recurring Transaction',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.titleMedium?.color,
+                  ),
+                ),
+                Switch(
+                  value: _isRecurring,
+                  onChanged: (value) {
+                    setState(() {
+                      _isRecurring = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+            if (_isRecurring) ...[
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _recurringFrequency,
+                decoration: InputDecoration(
+                  labelText: 'Frequency',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
+                  DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
+                  DropdownMenuItem(value: 'yearly', child: Text('Yearly')),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _recurringFrequency = value!;
+                  });
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Column(
+      children: [
+        _buildEnhancedSaveButton(),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: () => Navigator.pop(context),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickReceipt(ImageSource source) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(source: source);
+      if (image != null) {
+        setState(() {
+          _receiptPath = image.path;
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}

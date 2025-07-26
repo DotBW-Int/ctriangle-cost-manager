@@ -15,7 +15,7 @@ class DatabaseHelper {
   static Database? _database;
 
   static const String _databaseName = 'cost_manager.db';
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 4; // Increment for anti-tampering support
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -33,11 +33,31 @@ class DatabaseHelper {
       final dbPath = await getDatabasesPath();
       final path = join(dbPath, _databaseName);
 
+      print('DatabaseHelper: Opening database at: $path');
+      print('DatabaseHelper: Database version: $_databaseVersion');
+
       return await openDatabase(
         path,
         version: _databaseVersion,
         onCreate: _createTables,
-        onUpgrade: _onUpgrade, // Add migration support
+        onUpgrade: _onUpgrade,
+        onOpen: (db) async {
+          print('DatabaseHelper: Database opened successfully');
+          
+          // Check if transaction_number column exists and add if missing
+          var tableInfo = await db.rawQuery("PRAGMA table_info(transactions)");
+          bool hasTransactionNumber = tableInfo.any((column) => column['name'] == 'transaction_number');
+          
+          if (!hasTransactionNumber) {
+            print('DatabaseHelper: Adding missing transaction_number column');
+            try {
+              await db.execute('ALTER TABLE transactions ADD COLUMN transaction_number INTEGER');
+              print('DatabaseHelper: transaction_number column added successfully');
+            } catch (e) {
+              print('DatabaseHelper: Error adding transaction_number column: $e');
+            }
+          }
+        },
         readOnly: false,
         singleInstance: true,
       );
@@ -50,10 +70,11 @@ class DatabaseHelper {
   static Future<void> _createTables(Database db, int version) async {
     print('DatabaseHelper: Creating tables...');
     
-    // Transactions table
+    // Transactions table with anti-tampering support
     await db.execute('''
       CREATE TABLE transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_number INTEGER,
         type TEXT NOT NULL,
         amount REAL NOT NULL,
         category TEXT NOT NULL,
@@ -66,7 +87,9 @@ class DatabaseHelper {
         next_due_date INTEGER,
         is_active INTEGER DEFAULT 1,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        edit_history TEXT,
+        original_transaction_id INTEGER
       )
     ''');
 
@@ -142,11 +165,27 @@ class DatabaseHelper {
       try {
         await db.execute('ALTER TABLE virtual_banks ADD COLUMN target_date INTEGER');
       } catch (e) {
-        // Column might already exist, ignore error
+        print('Migration warning: $e');
+      }
+      
+      // Migration for adding transaction_number to transactions table
+      try {
+        await db.execute('ALTER TABLE transactions ADD COLUMN transaction_number INTEGER');
+      } catch (e) {
         print('Migration warning: $e');
       }
     }
-    // Add more migrations here for future versions
+    
+    if (oldVersion < 4) {
+      // Add anti-tampering columns
+      try {
+        await db.execute('ALTER TABLE transactions ADD COLUMN edit_history TEXT');
+        await db.execute('ALTER TABLE transactions ADD COLUMN original_transaction_id INTEGER');
+        print('DatabaseHelper: Added anti-tampering columns');
+      } catch (e) {
+        print('Migration warning: $e');
+      }
+    }
   }
 
   // Transaction operations
@@ -157,6 +196,7 @@ class DatabaseHelper {
       final db = await database;
       
       final transactionMap = {
+        'transaction_number': transaction.transactionNumber,
         'type': transaction.type,
         'amount': transaction.amount,
         'category': transaction.category,
@@ -167,10 +207,13 @@ class DatabaseHelper {
         'is_recurring': transaction.isRecurring ? 1 : 0,
         'recurring_frequency': transaction.recurringFrequency,
         'next_due_date': transaction.nextDueDate?.millisecondsSinceEpoch,
-        'is_active': transaction.isActive ? 1 : 0,
+        'is_active': transaction.isActive ? 1 : 0, // This was the bug - should be 1 for active transactions
         'created_at': transaction.createdAt.millisecondsSinceEpoch,
         'updated_at': transaction.updatedAt.millisecondsSinceEpoch,
+        'edit_history': transaction.editHistory?.toString(),
       };
+      
+      print('DatabaseHelper: Transaction map - is_active: ${transactionMap['is_active']}, isActive: ${transaction.isActive}');
       
       final id = await db.insert('transactions', transactionMap);
       print('DatabaseHelper: Transaction inserted with ID: $id');
@@ -188,6 +231,7 @@ class DatabaseHelper {
     DateTime? startDate,
     DateTime? endDate,
     int? limit,
+    bool includeInactive = false, // Add parameter to include inactive transactions
   }) async {
     try {
       final db = await database;
@@ -197,7 +241,7 @@ class DatabaseHelper {
       
       List<models.Transaction> transactions = maps
           .map((map) => models.Transaction.fromMap(map))
-          .where((t) => t.isActive)
+          .where((t) => includeInactive || t.isActive) // Filter based on includeInactive flag
           .toList();
 
       print('DatabaseHelper: getTransactions - After filtering active: ${transactions.length} transactions');

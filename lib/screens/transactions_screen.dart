@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../core/providers/finance_provider.dart';
 import '../core/theme/app_theme.dart';
 import '../core/models/models.dart';
+import '../core/widgets/transaction_details_dialog.dart';
 
 class TransactionsScreen extends StatefulWidget {
   final String? initialFilter; // 'income', 'expense', or null for all
@@ -752,29 +753,54 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           child: Icon(
             isIncome ? Icons.arrow_downward : Icons.arrow_upward,
             color: color,
-            size: 18, // Reduced from 20
+            size: 18,
           ),
         ),
-        title: Text(
-          transaction.description,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14, // Smaller title
-          ),
+        title: Row(
+          children: [
+            // Show transaction number if available
+            if (transaction.transactionNumber != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryBlue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '#${transaction.transactionNumber}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: AppTheme.primaryBlue,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(
+                transaction.description,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '${transaction.category} • ${DateFormat('MMM dd, yyyy').format(transaction.date)}',
-              style: const TextStyle(fontSize: 12), // Smaller subtitle
+              style: const TextStyle(fontSize: 12),
             ),
             if (transaction.isRecurring)
               Text(
                 'Recurring ${transaction.recurringFrequency}',
                 style: TextStyle(
                   color: Colors.orange[700],
-                  fontSize: 11, // Reduced from 12
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -789,7 +815,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               style: TextStyle(
                 color: color,
                 fontWeight: FontWeight.bold,
-                fontSize: 14, // Reduced from 16
+                fontSize: 14,
               ),
             ),
             if (transaction.virtualBankId != null)
@@ -797,13 +823,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 'Virtual Bank',
                 style: TextStyle(
                   color: Colors.blue[600],
-                  fontSize: 9, // Reduced from 10
+                  fontSize: 9,
                   fontWeight: FontWeight.w500,
                 ),
               ),
           ],
         ),
-        onTap: () => _showTransactionDetails(transaction),
+        onTap: () => TransactionDetailsDialog.show(
+          context: context,
+          transaction: transaction,
+          currencyFormat: _currencyFormat,
+        ),
       ),
     );
   }
@@ -955,129 +985,5 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     setState(() {
       _selectedFilter = filter;
     });
-  }
-
-  void _showTransactionDetails(Transaction transaction) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => _buildTransactionDetailsSheet(transaction),
-    );
-  }
-
-  Widget _buildTransactionDetailsSheet(Transaction transaction) {
-    final isIncome = _isIncomeTransaction(transaction);
-    final color = isIncome ? Colors.green : Colors.red;
-    
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isIncome ? Icons.arrow_downward : Icons.arrow_upward,
-                  color: color,
-                  size: 20, // Reduced from 24
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      transaction.description,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18, // Smaller title
-                      ),
-                    ),
-                    Text(
-                      '${isIncome ? '+' : '-'} ${_currencyFormat.format(transaction.amount)}',
-                      style: TextStyle(
-                        color: color,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16, // Reduced from 18
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _buildDetailRow('Category', transaction.category),
-          _buildDetailRow('Date', DateFormat('EEEE, MMM dd, yyyy').format(transaction.date)),
-          _buildDetailRow('Type', transaction.type.toUpperCase()),
-          if (transaction.isRecurring) ...[
-            _buildDetailRow('Frequency', transaction.recurringFrequency ?? 'N/A'),
-            if (transaction.nextDueDate != null)
-              _buildDetailRow('Next Due', DateFormat('MMM dd, yyyy').format(transaction.nextDueDate!)),
-          ],
-          if (transaction.virtualBankId != null)
-            _buildDetailRow('Virtual Bank', 'Yes'),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Close', style: TextStyle(fontSize: 14)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    // TODO: Navigate to edit transaction
-                  },
-                  child: const Text('Edit', style: TextStyle(fontSize: 14)),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
-                fontSize: 13, // Smaller text
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 13, // Smaller text
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

@@ -1,7 +1,9 @@
 import 'dart:math' as math;
+import 'dart:convert';
 
 class Transaction {
   final int? id;
+  final int? transactionNumber; // Add transaction numbering
   final String type; // 'expense', 'income', 'transfer', 'recurring'
   final double amount;
   final String category;
@@ -15,9 +17,12 @@ class Transaction {
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final List<Map<String, dynamic>>? editHistory; // Add edit history support
+  final int? originalTransactionId; // Link to original transaction for anti-tampering
 
   Transaction({
     this.id,
+    this.transactionNumber,
     required this.type,
     required this.amount,
     required this.category,
@@ -31,30 +36,36 @@ class Transaction {
     this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
+    this.editHistory,
+    this.originalTransactionId,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'transaction_number': transactionNumber,
       'type': type,
       'amount': amount,
       'category': category,
       'description': description,
       'date': date.millisecondsSinceEpoch,
-      'receiptPath': receiptPath,
-      'virtualBankId': virtualBankId,
-      'isRecurring': isRecurring ? 1 : 0,
-      'recurringFrequency': recurringFrequency,
-      'nextDueDate': nextDueDate?.millisecondsSinceEpoch,
-      'isActive': isActive ? 1 : 0,
-      'createdAt': createdAt.millisecondsSinceEpoch,
-      'updatedAt': updatedAt.millisecondsSinceEpoch,
+      'receipt_path': receiptPath,
+      'virtual_bank_id': virtualBankId,
+      'is_recurring': isRecurring ? 1 : 0,
+      'recurring_frequency': recurringFrequency,
+      'next_due_date': nextDueDate?.millisecondsSinceEpoch,
+      'is_active': isActive ? 1 : 0,
+      'created_at': createdAt.millisecondsSinceEpoch,
+      'updated_at': updatedAt.millisecondsSinceEpoch,
+      'edit_history': editHistory != null ? jsonEncode(editHistory) : null,
+      'original_transaction_id': originalTransactionId,
     };
   }
 
   factory Transaction.fromMap(Map<String, dynamic> map) {
     return Transaction(
       id: map['id'],
+      transactionNumber: map['transaction_number'],
       type: map['type'],
       amount: map['amount'].toDouble(),
       category: map['category'],
@@ -70,11 +81,60 @@ class Transaction {
       isActive: map['is_active'] == 1,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at']),
+      editHistory: map['edit_history'] != null ? _parseEditHistory(map['edit_history']) : null,
+      originalTransactionId: map['original_transaction_id'],
     );
+  }
+
+  static List<Map<String, dynamic>>? _parseEditHistory(String? editHistoryStr) {
+    if (editHistoryStr == null || editHistoryStr.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(editHistoryStr) as List;
+      return decoded.cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('Error parsing edit history: $e');
+      return null;
+    }
+  }
+
+  // Check if this transaction has been edited
+  bool get hasBeenEdited => editHistory != null && editHistory!.isNotEmpty;
+
+  // Get the number of times this transaction has been edited
+  int get editCount => editHistory?.length ?? 0;
+
+  // Get the last edit timestamp
+  DateTime? get lastEditTime {
+    if (editHistory == null || editHistory!.isEmpty) return null;
+    final lastEdit = editHistory!.last;
+    return DateTime.fromMillisecondsSinceEpoch(lastEdit['timestamp'] ?? 0);
+  }
+
+  // Get formatted edit summary
+  String get editSummary {
+    if (!hasBeenEdited) return 'No edits';
+    return 'Edited ${editCount} time${editCount > 1 ? 's' : ''} • Last: ${_formatEditTime(lastEditTime)}';
+  }
+
+  String _formatEditTime(DateTime? time) {
+    if (time == null) return 'Unknown';
+    final now = DateTime.now();
+    final difference = now.difference(time);
+    
+    if (difference.inDays > 0) {
+      return '${difference.inDays} day${difference.inDays > 1 ? 's' : ''} ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} hour${difference.inHours > 1 ? 's' : ''} ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''} ago';
+    } else {
+      return 'Just now';
+    }
   }
 
   Transaction copyWith({
     int? id,
+    int? transactionNumber,
     String? type,
     double? amount,
     String? category,
@@ -88,9 +148,12 @@ class Transaction {
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
+    List<Map<String, dynamic>>? editHistory,
+    int? originalTransactionId,
   }) {
     return Transaction(
       id: id ?? this.id,
+      transactionNumber: transactionNumber ?? this.transactionNumber,
       type: type ?? this.type,
       amount: amount ?? this.amount,
       category: category ?? this.category,
@@ -104,6 +167,8 @@ class Transaction {
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      editHistory: editHistory ?? this.editHistory,
+      originalTransactionId: originalTransactionId ?? this.originalTransactionId,
     );
   }
 }
@@ -176,6 +241,36 @@ class VirtualBank {
   double get progressPercentage {
     if (targetAmount <= 0) return 0;
     return (balance / targetAmount).clamp(0.0, 1.0);
+  }
+
+  VirtualBank copyWith({
+    String? id,
+    String? name,
+    double? balance,
+    double? targetAmount,
+    DateTime? targetDate,
+    String? color,
+    String? icon,
+    String? description,
+    String? type,
+    String? debitSource,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return VirtualBank(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      balance: balance ?? this.balance,
+      targetAmount: targetAmount ?? this.targetAmount,
+      targetDate: targetDate ?? this.targetDate,
+      color: color ?? this.color,
+      icon: icon ?? this.icon,
+      description: description ?? this.description,
+      type: type ?? this.type,
+      debitSource: debitSource ?? this.debitSource,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
   }
 }
 
